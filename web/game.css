@@ -216,3 +216,6 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 .bcard{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;background:var(--panel2);border:3px solid var(--line);padding:8px}
 .bcard .who{display:flex;flex-direction:column;gap:5px;min-width:0}
 .bpos{background:var(--night);border:2px solid var(--line);padding:4px 8px;font-size:18px}
+
+/* panel sections never shrink; the panel scrolls instead (fixes the stock list collapsing to zero height) */
+.body>*{flex-shrink:0}
