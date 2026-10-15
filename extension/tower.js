@@ -111,7 +111,6 @@ class TowerView{
       cx.fillStyle=c.c;cx.fillRect(x,y-4,12,3);cx.fillRect(x+3,y-6,6,2);cx.fillStyle=mix("#141428","#9ad8ff",light);cx.fillRect(x+4,y-6,4,1);cx.fillStyle="#141428";cx.fillRect(x+2,y-1,2,2);cx.fillRect(x+8,y-1,2,2);
       if(light<.5){cx.fillStyle="#fff1c0";const fx=c.v>0?x+12:x-1;cx.fillRect(fx,y-3,1,1);cx.globalAlpha=.18;cx.fillRect(c.v>0?fx+1:fx-10,y-4,10,3);cx.globalAlpha=1}}
     const door=TX+TW/2;
-    for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;if(Math.abs(p.x-door)<.4&&Math.random()<.4){p.x=p.v>0?-4:W+4;this.enter=8}this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}
     // tower body + lobby
     const top=fl.length?this.floorY(fl.length-1):LY;
     cx.fillStyle="#3d3a6e";cx.fillRect(TX-3,top-2,TW+6,LY-top+LOBBY+2);
@@ -126,6 +125,8 @@ class TowerView{
     const carY=Math.min(LY+1,Math.max(shaftTop+FH-4,LY-E.y*FH));cx.fillStyle="#ffcc3d";cx.fillRect(SHAFT+1,carY-FH+4,6,FH-5);cx.fillStyle=E.wait>0?"#fff1c0":"#c99a20";cx.fillRect(SHAFT+2,carY-FH+6,4,5);
     // floors
     fl.forEach((f,i)=>{try{this.drawFloor(f,i,light,S,id,rt)}catch(e){console.error(e)}});
+    // sidewalk pedestrians are drawn after the building so they walk in front of it
+    for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;if(Math.abs(p.x-door)<.4&&Math.random()<.4){p.x=p.v>0?-4:W+4;this.enter=8}this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}
     // construction
     for(const k in this.cons){const i=+k;if(i>=fl.length){delete this.cons[k];continue}const y=this.floorY(i),left=this.cons[k]--;
       cx.fillStyle="rgba(20,20,40,.55)";cx.fillRect(RX0,y+2,ROOM,FH-3);cx.fillStyle="#ff9b4a";
