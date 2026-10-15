@@ -24,7 +24,7 @@ $("#add-floor").onclick=()=>{const L0=S.lots[S.cur];if(L0.floors.length>=T.maxFl
 function goEmptyFloor(){for(const[lot,L0]of Object.entries(S.lots)){const i=L0.floors.findIndex(f=>!f.type);if(i>=0){if(lot!==S.cur)goLot(lot);sel=i;view.sel=i;setTab("floor");return true}}
   toast("No empty floors. Use + FLOOR under your tower first.");return false}
 function toBottom(){requestAnimationFrame(()=>requestAnimationFrame(()=>{const ts=$("#towerscroll");ts.scrollTop=ts.scrollHeight}))}
-function goLot(id){S.cur=id;sel=0;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
+function goLot(id){S.cur=id;sel=0;TU.lot=null;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
 $("#lot-prev").onclick=()=>{const o=owned(),i=o.findIndex(l=>l.id===S.cur);goLot(o[(i-1+o.length)%o.length].id)};
 $("#lot-next").onclick=()=>{const o=owned(),i=o.findIndex(l=>l.id===S.cur);goLot(o[(i+1)%o.length].id)};
 function collect(lot,i){const f=S.lots[lot].floors[i],amt=f.register;if(!amt)return;S.cash+=amt;f.register=0;if(lot===S.cur)view.collected(i,amt);SFX.play("coin");floatCash();save()}
@@ -117,7 +117,7 @@ function hud(){
   $("#h-cash").textContent=money(S.cash);
   const pm=T.perMin(rt)-T.wagesPerMin(S)+T.contractPerMin(S);$("#h-inc").textContent=(pm>=0?"+":"")+money(pm);$("#h-inc").style.color=pm<0?"var(--red)":"";
   $("#h-nw").textContent=money(T.netWorth(S));$("#h-rate").textContent="★ "+T.avgRating(S).toFixed(1);
-  $("#h-team").textContent=`${S.emps.length} / ${T.staffCap(S)}`;$("#h-rank").textContent=T.rank(S);
+  {const n=T.headcount(S,S.cur),c=T.staffCap(S,S.cur);$("#h-team").textContent=`${n} / ${c}`;$("#h-team").style.color=n>c?"var(--red)":"";$("#hud .team b").textContent=owned().length>1?"TEAM HERE":"TEAM"}$("#h-rank").textContent=T.rank(S);
   const lot=T.lotDef(S.cur);$("#lot-name").textContent=lot.name;$("#lot-bonus").textContent=lot.blurb;
   const multi=owned().length>1;$("#lot-prev").disabled=!multi;$("#lot-next").disabled=!multi;
   const reg=S.lots[S.cur].floors.reduce((a,f)=>a+(T.isBiz(f.type)&&!f.manager?f.register:0),0);$("#collect-all").textContent="COLLECT "+money(reg);$("#collect-all").disabled=reg<1;
@@ -137,13 +137,15 @@ function towerRow(lot){const L0=S.lots[lot],n=L0.floors.length,mx=T.maxFloors(S)
 function vEmpty(lot){
   let h=`<div class="head"><h2>FLOOR ${sel+1} · EMPTY</h2><span class="pill">${T.lotDef(lot).name.toUpperCase()}</span></div>
   <div class="muted">What should go here? Businesses earn money from customers. Support floors make your team and businesses better.</div><div class="sec"><h3>BUSINESSES</h3><div class="grid2">`;
-  for(const[k,B]of Object.entries(T.BIZ)){const c=T.buildCost(k,lot),ok=T.unlocked(S,k),m=T.lotMult(lot,k);
-    h+=`<div class="card" style="${ok?"":"opacity:.55"}"><div class="row spread"><span><span class="swatch" style="background:${B.color}"></span> <b>${B.name}</b></span>${m>1?`<span class="pill" style="color:var(--green)">×${m.toFixed(1)} HERE</span>`:""}</div>
+  const biz=Object.entries(T.BIZ).filter(([k])=>T.allowedHere(k,lot)).sort((a,b)=>(!!b[1].only)-(!!a[1].only));
+  for(const[k,B]of biz){const c=T.buildCost(k,lot),ok=T.unlocked(S,k),m=T.lotMult(lot,k);
+    h+=`<div class="card${B.only?" excl":""}" style="${ok?"":"opacity:.55"}"><div class="row spread"><span><span class="swatch" style="background:${B.color}"></span> <b>${B.name}</b></span>${B.only?`<span class="pill" style="color:var(--gold)">ONLY HERE</span>`:m>1?`<span class="pill" style="color:var(--green)">×${m.toFixed(1)} HERE</span>`:""}</div>
     <div class="muted">${B.desc}</div><div>${money(B.price*m)} per customer · ${B.time}s each</div><div class="up">About ${money(estNew(k,lot))}/min with one employee</div>
     ${ok?`<button data-act="build" data-t="${k}" ${cost(c)}>OPEN IT ${money(c)}</button>`:`<button disabled>REACH ${T.RANKS[B.rank].toUpperCase()}</button>`}</div>`}
   h+=`</div></div><div class="sec"><h3>SUPPORT FLOORS</h3><div class="grid2">`;
-  for(const[k,B]of Object.entries(T.SUPPORT)){const c=T.buildCost(k,lot),have=T.findSupport(S,lot,k)>=0;
-    h+=`<div class="card"><div><span class="swatch" style="background:${B.color}"></span> <b>${B.name}</b></div><div class="muted">${B.desc}</div>${have&&(k==="lounge"||k==="marketing")?`<div class="muted">This tower already has one. Upgrading it is usually better.</div>`:""}
+  for(const[k,B]of Object.entries(T.SUPPORT)){const c=T.buildCost(k,lot),have=T.findSupport(S,lot,k)>=0,ok=T.allowedHere(k,lot);
+    if(!ok&&B.minLot!=null){h+=`<div class="card" style="opacity:.5"><div><span class="swatch" style="background:${B.color}"></span> <b>${B.name}</b></div><div class="muted">${B.desc}</div><button disabled>${T.LOTS[B.minLot].name.toUpperCase()} AND UP</button></div>`;continue}
+    h+=`<div class="card${B.minLot!=null?" excl":""}"><div class="row spread"><span><span class="swatch" style="background:${B.color}"></span> <b>${B.name}</b></span>${B.minLot!=null?`<span class="pill" style="color:var(--gold)">UPSCALE</span>`:""}</div><div class="muted">${B.desc}</div>${have&&(k==="lounge"||k==="marketing")?`<div class="muted">This tower already has one. Upgrading it is usually better.</div>`:""}
     <button data-act="build" data-t="${k}" ${cost(c)}>BUILD ${money(c)}</button></div>`}
   return h+`</div></div>`}
 function vBiz(lot,i,f){
@@ -178,7 +180,7 @@ function vBiz(lot,i,f){
     h+=`<div class="slot">${ava(m)}<div class="who"><b>${esc(m.name)} <span class="muted">Manager</span></b><div class="muted">Collects the register, makes staff 10% faster, and keeps this floor earning while you're away.</div></div>
       <div class="acts"><button class="pink" data-act="ability" title="${ab[1]}">${L(()=>f.abil>Date.now()?ab[0]+" "+Math.ceil((f.abil-Date.now())/1000)+"s":ab[0])}</button><button class="ghost" data-act="unassign" data-id="${m.id}">STEP DOWN</button></div></div>
       <div class="muted">${ab[0]}: ${ab[1]}. Recharges in 5 minutes.</div>`}
-  else{const el=S.emps.filter(e=>e.lvl>=3&&e.role!=="manager");
+  else{const el=S.emps.filter(e=>e.lvl>=3&&e.role!=="manager"&&T.homeOf(e)===lot);
     h+=`<div class="muted">No manager. You collect the register yourself, and this floor only fills its register while you're away. Anyone level 3+ can be promoted. They leave their station to manage.</div>
     ${el.length?`<select data-act="mgr"><option value="">Promote someone…</option>${el.map(e=>`<option value="${e.id}">${esc(e.name)} · Lv${e.lvl}${e.promoReady?" · wants this!":""}</option>`).join("")}</select>`:`<div class="muted">Nobody is level 3 yet. Staff level up by serving customers or in a Training Room.</div>`}`}
   h+=`</div>`;
@@ -194,12 +196,12 @@ function vBiz(lot,i,f){
   h+=`<div class="sec"><h3>RECENT REVIEWS</h3><div class="reviews">${f.reviews.length?f.reviews.map(r=>`<div class="review"><span class="s">${"★".repeat(r.s)}${"☆".repeat(5-r.s)}</span><span>"${esc(r.t)}" <span class="n">${esc(r.n)}</span></span></div>`).join(""):`<div class="muted">No reviews yet. They'll come in as you serve customers.</div>`}</div></div>`;
   h+=`<div class="danger"><button class="${armed.demo?"red":"ghost"}" data-act="demolish">${armed.demo?"TAP AGAIN TO CLOSE THIS BUSINESS":"CLOSE THIS BUSINESS"}</button></div>`;
   return h}
-function assignSelect(lot,i,k){const opts=S.emps.filter(e=>e.role==="staff").sort((a,b)=>(a.loc?1:0)-(b.loc?1:0));
+function assignSelect(lot,i,k){const opts=S.emps.filter(e=>e.role==="staff"&&T.homeOf(e)===lot).sort((a,b)=>(a.loc?1:0)-(b.loc?1:0));
   if(!opts.length)return`<button data-act="tab" data-t="team">HIRE SOMEONE</button>`;
   return`<select data-act="assign" data-k="${k}"><option value="">Assign…</option>${opts.map(e=>`<option value="${e.id}">${esc(e.name)} · SPD ${e.spd} CHR ${e.chr}${e.fav===S.lots[lot].floors[i].type?" ♥":""} · ${e.loc?"moves from "+(e.loc.mgr?"manager":T.BIZ[S.lots[e.loc.lot].floors[e.loc.i].type].name):"free"}</option>`).join("")}</select>`}
 function vSupport(lot,i,f){const B=T.SUPPORT[f.type],c=f.lvl<T.MAX_SUP?T.supCost(f,lot):0;
   let effect={lounge:`${2*f.lvl} seats. Staff recover ${Math.round(100*(1+.25*(f.lvl-1)))}% faster per level here.`,marketing:`+${15*f.lvl}% customers on every business in ${T.lotDef(lot).name}. Hype grows over time.`,
-    training:`${2*f.lvl} seats. Trainees earn XP ${Math.round(30*(f.lvl-1))}% faster than at level 1.`,office:`Lets you employ ${3*f.lvl} more people (team cap is ${T.staffCap(S)}).`,trade:`${T.brokerCap(S)} broker seat${T.brokerCap(S)>1?"s":""}, ${Math.round(Math.min(70,8*T.deskLvl(S)))}% chance of a tip each update, ${(T.fee(S)*100).toFixed(1)}% trading fee. Unlocked: ${T.PERKS.filter(p=>T.hasPerk(S,p.l)).map(p=>p.n.toLowerCase()).join("; ")}.${T.PERKS.find(p=>!T.hasPerk(S,p.l))?` Next: ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).n.toLowerCase()} (company-wide desk level ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).l}).`:""}`}[f.type];
+    training:`${2*f.lvl} seats. Trainees earn XP ${Math.round(30*(f.lvl-1))}% faster than at level 1.`,valet:`+${10*f.lvl}% customers on every business in ${T.lotDef(lot).name}.`,helipad:`+${8*f.lvl}% revenue on every business in ${T.lotDef(lot).name}.`,robots:`Staff in ${T.lotDef(lot).name} tire ${15*f.lvl}% slower.`,office:`Makes room for ${3*f.lvl} more people at ${T.lotDef(lot).name} (${T.headcount(S,lot)}/${T.staffCap(S,lot)} here). You can't remove it while that would leave more people here than fit.`,trade:`${T.brokerCap(S)} broker seat${T.brokerCap(S)>1?"s":""}, ${Math.round(Math.min(70,8*T.deskLvl(S)))}% chance of a tip each update, ${(T.fee(S)*100).toFixed(1)}% trading fee. Unlocked: ${T.PERKS.filter(p=>T.hasPerk(S,p.l)).map(p=>p.n.toLowerCase()).join("; ")}.${T.PERKS.find(p=>!T.hasPerk(S,p.l))?` Next: ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).n.toLowerCase()} (company-wide desk level ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).l}).`:""}`}[f.type];
   let h=`<div class="head"><h2>${B.name.toUpperCase()} · LV ${f.lvl}</h2><span class="pill">${T.lotDef(lot).name.toUpperCase()}</span></div><div class="muted">${B.desc}</div><div class="why good"><div><b>RIGHT NOW</b>${effect}</div></div>
     ${f.lvl<T.MAX_SUP?`<button data-act="supup" ${cost(c)}>UPGRADE TO LV ${f.lvl+1} · ${money(c)}</button>`:`<div class="up">Max level.</div>`}`;
   if(f.type==="lounge"||f.type==="training"){const who=S.emps.filter(e=>e.at&&e.at.lot===lot&&e.at.i===i);
@@ -210,11 +212,18 @@ function vSupport(lot,i,f){const B=T.SUPPORT[f.type],c=f.lvl<T.MAX_SUP?T.supCost
   return h}
 
 /* ===== TEAM ===== */
-const TU={sub:"staff",filter:"all",sort:"attention",q:"",open:null,limit:40};
+const TU={sub:"staff",filter:"all",sort:"attention",q:"",open:null,limit:40,lot:null};
+const tl=()=>TU.lot&&TU.lot!=="all"&&S.lots[TU.lot]?TU.lot:S.cur;
+const allTowers=()=>TU.lot==="all";
+const teamSet=()=>allTowers()?S.emps:S.emps.filter(e=>T.homeOf(e)===tl());
+function towerChips(){if(owned().length<2&&!allTowers())return"";
+  return`<div class="chips tchips">${owned().map(l=>{const n=T.headcount(S,l.id),c=T.staffCap(S,l.id);return`<button data-act="tlot" data-k="${l.id}" aria-pressed="${!allTowers()&&tl()===l.id}" class="${n>c?"over":""}">${esc(l.name)} ${n}/${c}</button>`}).join("")}<button data-act="tlot" data-k="all" aria-pressed="${allTowers()}">ALL ${S.emps.length}</button></div>`}
+function overCapNote(lot){const n=T.headcount(S,lot),c=T.staffCap(S,lot);if(n<=c)return"";
+  return`<div class="why bad"><div><b>${esc(T.lotDef(lot).name.toUpperCase())} IS OVER ITS STAFF LIMIT</b>${n} people work here but there's room for ${c}. Nobody has been let go, but you can't hire here until you build or upgrade an HR Office, or move ${n-c} ${n-c>1?"people":"person"} to another property.</div></div>`}
 const ROLE_NAME={manager:"Manager",broker:"Broker",hr:"HR Director"};
 function shortWhere(e){if(e.role==="broker")return"Broker";if(e.role==="hr")return"HR Director";
   if(e.state==="break")return"Resting";if(e.state==="train")return"Training";if(!e.loc)return"No job";
-  const f=S.lots[e.loc.lot]?.floors[e.loc.i];if(!f)return"No job";const lot=T.lotDef(e.loc.lot).name.split(" ")[0];
+  const f=S.lots[e.loc.lot]?.floors[e.loc.i];if(!f||!T.BIZ[f.type])return"No job";const lot=T.lotDef(e.loc.lot).name.split(" ")[0];
   return e.loc.mgr?`Manager · ${T.BIZ[f.type].name} · ${lot}`:`${T.BIZ[f.type].name} · ${lot} F${e.loc.i+1}`}
 const underpaid=e=>e.salary<T.fairPay(e)*.95;
 const praiseReady=e=>Date.now()-e.praisedAt>=300e3;
@@ -224,21 +233,21 @@ const FILTERS=[["all","All"],["attention","Needs you"],["idle","No job"],["worki
 function passFilter(e){switch(TU.filter){case"attention":return needs(e)>0;case"idle":return e.role==="staff"&&e.state==="idle";case"working":return e.state==="work";
   case"away":return e.state==="break"||e.state==="train";case"leaders":return e.role!=="staff";default:return true}}
 const SORTS={attention:(a,b)=>needs(b)-needs(a)||b.lvl-a.lvl,level:(a,b)=>b.lvl-a.lvl,mood:(a,b)=>a.mood-b.mood,speed:(a,b)=>b.spd-a.spd,charm:(a,b)=>b.chr-a.chr,name:(a,b)=>a.name.localeCompare(b.name),pay:(a,b)=>b.salary-a.salary};
-function teamSubtabs(){const hrOn=T.hrActive(S);return`<div class="subtabs">${[["staff",`STAFF ${S.emps.length}/${T.staffCap(S)}`],["hire",`HIRE (${S.applicants.length})`],["hr",`HR DIRECTOR${hrOn?" ✓":""}`]].map(([k,l])=>`<button data-act="teamsub" data-k="${k}" aria-pressed="${TU.sub===k}">${l}</button>`).join("")}</div>`}
+function teamSubtabs(){const lot=tl(),hrOn=T.hrActive(S,lot);return towerChips()+`<div class="subtabs">${[["staff",allTowers()?`STAFF ${S.emps.length}`:`STAFF ${T.headcount(S,lot)}/${T.staffCap(S,lot)}`],["hire",`HIRE (${S.applicants.length})`],["hr",`HR DIRECTOR${hrOn?" ✓":""}`]].map(([k,l])=>`<button data-act="teamsub" data-k="${k}" aria-pressed="${TU.sub===k}">${l}</button>`).join("")}</div>`}
 V.team=()=>teamSubtabs()+(TU.sub==="hire"?vHire():TU.sub==="hr"?vHR():vStaff());
 function vStaff(){
-  const E=S.emps,c={work:0,rest:0,train:0,idle:0,upset:0,pts:0,under:0};
+  const E=teamSet(),c={work:0,rest:0,train:0,idle:0,upset:0,pts:0,under:0};
   E.forEach(e=>{if(e.state==="work")c.work++;if(e.state==="break")c.rest++;if(e.state==="train")c.train++;if(e.role==="staff"&&e.state==="idle")c.idle++;if(e.mood<30)c.upset++;if(e.pts>0)c.pts+=e.pts;if(underpaid(e))c.under++});
   const raiseCost=E.filter(underpaid).reduce((a,e)=>a+(T.fairPay(e)*1.02-e.salary),0),praiseN=E.filter(e=>praiseReady(e)&&e.mood<80).length;
-  const empty=T.emptyStations(S).length;
-  let h=`<div class="tstats">
+  const empty=T.emptyStations(S,(f,l)=>allTowers()||l===tl()).length;
+  let h=(allTowers()?owned().map(l=>overCapNote(l.id)).join(""):overCapNote(tl()))+`<div class="tstats">
     <button data-act="tfilter" data-k="working"><b>${c.work}</b><span>working</span></button>
     <button data-act="tfilter" data-k="away"><b>${c.rest+c.train}</b><span>resting/training</span></button>
     <button data-act="tfilter" data-k="idle" class="${c.idle?"warn":""}"><b>${c.idle}</b><span>no job</span></button>
     <button data-act="tfilter" data-k="attention" class="${c.upset?"bad":""}"><b>${c.upset}</b><span>upset</span></button>
     <button data-act="tfilter" data-k="attention" class="${c.pts?"gold":""}"><b>${c.pts}</b><span>skill points</span></button>
-    <div><b>${money(T.wagesPerMin(S))}</b><span>wages / min</span></div></div>`;
-  if(T.hrActive(S))h+=`<div class="why good"><div><b>YOUR HR DIRECTOR IS ON IT</b>${esc(T.hrDirector(S).name)} handles ${Object.entries(S.hr).filter(([k,v])=>v).length} of 8 people jobs for you. <a href="#" data-act="teamsub" data-k="hr">See what they're doing</a></div></div>`;
+    <div><b>${money(E.reduce((a,e)=>a+e.salary,0))}</b><span>wages / min</span></div></div>`;
+  if(!allTowers()&&T.hrActive(S,tl()))h+=`<div class="why good"><div><b>THIS TOWER'S HR DIRECTOR IS ON IT</b>${esc(T.hrDirector(S,tl()).name)} handles ${Object.entries(S.hr).filter(([k,v])=>v).length} of 8 people jobs for you. <a href="#" data-act="teamsub" data-k="hr">See what they're doing</a></div></div>`;
   h+=`<div class="bulk">${c.under?`<button class="green" data-act="payfair">PAY ${c.under} FAIRLY (+${money(raiseCost)}/MIN)</button>`:""}
     ${praiseN?`<button class="pink" data-act="praiseall">PRAISE ${praiseN}</button>`:""}
     ${c.pts?`<button class="green" data-act="spendall">SPEND ${c.pts} POINT${c.pts>1?"S":""}</button>`:""}
@@ -278,6 +287,7 @@ function empDetail(e){const why=moodWhy(e),tr=T.trait(e),fair=T.fairPay(e);
     ${e.pts>0?`<div class="row"><b class="up">${e.pts} POINT${e.pts>1?"S":""}:</b>${["spd","chr","sta"].map(s=>`<button class="green" data-act="point" data-id="${e.id}" data-s="${s}" ${e[s]>=10?"disabled":""}>+${{spd:"SPEED",chr:"CHARM",sta:"STAMINA"}[s]}</button>`).join("")}</div>`:""}
     ${(e.promoReady||armed["promo"+e.id])&&e.role!=="manager"?`<div class="row"><span class="up">Pick a floor for ${esc(first(e))} to manage:</span>${promoSelect(e)}</div>`:""}
     ${e.role==="staff"&&!e.loc?`<div class="row"><span class="muted">Give ${esc(first(e))} a station:</span>${stationSelect(e)}</div>`:""}
+    ${owned().length>1?`<div class="row"><span class="muted">Works at <b>${esc(T.lotDef(T.homeOf(e)).name)}</b>.</span><select data-act="moveemp" data-id="${e.id}"><option value="">Move to another property…</option>${owned().filter(l=>l.id!==T.homeOf(e)).map(l=>`<option value="${l.id}" ${T.roomAt(S,l.id)>0?"":"disabled"}>${esc(l.name)} · ${T.headcount(S,l.id)}/${T.staffCap(S,l.id)}${T.roomAt(S,l.id)>0?"":" (full)"}</option>`).join("")}</select></div>`:""}
     <div class="row">
       <button class="ghost" data-act="praise" data-id="${e.id}" ${praiseReady(e)?"":"disabled"}>${praiseReady(e)?"PRAISE":"PRAISED ♥"}</button>
       <button class="ghost" data-act="raise" data-id="${e.id}">RAISE +15%</button>
@@ -286,35 +296,36 @@ function empDetail(e){const why=moodWhy(e),tr=T.trait(e),fair=T.fairPay(e);
       ${e.loc&&e.role==="staff"?`<button class="ghost" data-act="unassign" data-id="${e.id}">TAKE OFF STATION</button>`:""}
       ${e.lvl>=3&&e.role==="staff"&&!e.promoReady?`<button class="ghost" data-act="promoready" data-id="${e.id}">MAKE MANAGER…</button>`:""}
       ${e.role!=="broker"&&bSeats>0?`<button class="ghost" data-act="mkbroker" data-id="${e.id}">MAKE BROKER</button>`:""}
-      ${e.role!=="hr"&&office&&!T.hrDirector(S)?`<button class="ghost" data-act="mkhr" data-id="${e.id}">MAKE HR DIRECTOR</button>`:""}
+      ${e.role!=="hr"&&T.lotSum(S,T.homeOf(e),"office")>0&&!T.hrDirector(S,T.homeOf(e))?`<button class="ghost" data-act="mkhr" data-id="${e.id}">MAKE HR DIRECTOR</button>`:""}
       ${e.role==="broker"||e.role==="hr"||e.role==="manager"?`<button class="ghost" data-act="unassign" data-id="${e.id}">STEP DOWN</button>`:""}
       <button class="${armed["fire"+e.id]?"red":"ghost"}" data-act="fire" data-id="${e.id}">${armed["fire"+e.id]?"REALLY LET GO?":"LET GO"}</button></div></div>`}
-function stationSelect(e){const es=T.emptyStations(S);if(!es.length)return`<span class="muted">No empty stations. Add one on a business floor.</span>`;
+function stationSelect(e){const es=T.emptyStations(S,(f,l)=>l===T.homeOf(e));if(!es.length)return`<span class="muted">No empty stations. Add one on a business floor.</span>`;
   es.sort((a,b)=>(b.f.type===e.fav)-(a.f.type===e.fav));
   return`<select data-act="placeemp" data-id="${e.id}"><option value="">Choose a station…</option>${es.map(x=>`<option value="${x.lot}:${x.i}:${x.k}">${x.f.type===e.fav?"♥ ":""}${T.BIZ[x.f.type].name} · ${T.lotDef(x.lot).name} F${x.i+1} · station ${x.k+1}</option>`).join("")}</select>`}
-function vHire(){const cap=T.staffCap(S),full=S.emps.length>=cap;
-  let h=`<div class="row spread"><span class="muted">New applicants in ${L(()=>{const l=Math.max(0,180-Math.floor((Date.now()-S.appAt)/1000));return Math.floor(l/60)+":"+String(l%60).padStart(2,"0")})}</span>
-    <button class="ghost" data-act="postad" ${cost(100)}>POST A JOB AD $100</button></div>${full?`<div class="why warn"><div><b>YOUR TEAM IS FULL</b>Each HR Office level lets you employ 3 more people. Build one on an empty floor, or upgrade one you already have.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`:""}<div class="grid2">`;
+function vHire(){const lot=allTowers()?S.cur:tl(),cap=T.staffCap(S,lot),full=T.roomAt(S,lot)<=0;
+  let h=`<div class="muted">Hiring for <b>${esc(T.lotDef(lot).name)}</b>: ${T.headcount(S,lot)} of ${cap} spots filled. New hires work only at this property.</div><div class="row spread"><span class="muted">New applicants in ${L(()=>{const l=Math.max(0,180-Math.floor((Date.now()-S.appAt)/1000));return Math.floor(l/60)+":"+String(l%60).padStart(2,"0")})}</span>
+    <button class="ghost" data-act="postad" ${cost(100)}>POST A JOB AD $100</button></div>${full?`<div class="why warn"><div><b>${esc(T.lotDef(lot).name.toUpperCase())} IS FULL</b>Each HR Office level in this tower makes room for 3 more people here. Build one on an empty floor, or upgrade one you already have.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`:""}<div class="grid2">`;
   for(const a of S.applicants){const tr=T.trait(a),fee=T.hireFee(a);
     h+=`<div class="card"><div class="row">${ava(a)}<div><b>${esc(a.name)}</b><div class="muted">${esc(a.bio)}</div></div></div>
     <div class="row"><span class="chip trait" title="${esc(tr.desc)}">${tr.name.toUpperCase()}</span><span class="chip fav">♥ ${T.BIZ[a.fav].name.toUpperCase()}</span></div>
     <div class="muted">${esc(tr.desc)}</div><div>SPD ${a.spd} · CHR ${a.chr} · STA ${a.sta}</div><div class="muted">${money(a.salary)}/min · hiring fee ${money(fee)}</div>
-    <button class="green" data-act="hire" data-id="${a.id}" ${full?"disabled":cost(fee)}>HIRE ${esc(first(a).toUpperCase())}</button></div>`}
+    <button class="green" data-act="hire" data-id="${a.id}" data-l="${lot}" ${full?"disabled":cost(fee)}>HIRE ${esc(first(a).toUpperCase())}</button></div>`}
   return h+`</div>`}
 const HR_DUTIES=[["requests","Answer staff requests","Gives raises to unhappy staff and approves transfers to jobs they love."],["raises","Keep pay fair","Raises anyone paid below the fair wage."],["praise","Check in on morale","Praises anyone whose mood dips below 55."],
   ["points","Spend skill points","Speed first, then charm, then stamina."],["staffing","Fill empty stations","Puts people without a job on open stations, favorites first."],["favorites","Match people to jobs they love","Moves and swaps staff so they work at their favorite business."],
   ["training","Train people without a job","Sends anyone without a station to a free Training Room seat."],["promote","Promote managers","Makes your best level 3+ worker the manager of any floor without one."]];
-function vHR(){const d=T.hrDirector(S),office=T.coSum(S,"office")>0;
-  let h=`<div class="muted">An HR Director looks after your people so you don't have to. They work from your HR Office and lift everyone's mood a little (more if they're charming).</div>`;
-  if(!office)return h+`<div class="why warn"><div><b>YOU NEED AN HR OFFICE FIRST</b>Build one on any floor. It also lets you employ 3 more people per level.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`;
-  if(!d){const c=S.emps.filter(e=>e.role==="staff"||e.role==="manager").sort((a,b)=>b.chr-a.chr);
+function vHR(){const lot=allTowers()?S.cur:tl(),LN=esc(T.lotDef(lot).name),d=T.hrDirector(S,lot),office=T.lotSum(S,lot,"office")>0;
+  let h=`<div class="muted">Each property can have its own HR Director. They look after the people at ${LN} only, working from that tower's HR Office, and lift everyone's mood there a little (more if they're charming).</div>
+  ${owned().length>1?`<div class="row">${owned().map(l=>{const x=T.hrDirector(S,l.id);return`<span class="chip">${esc(l.name)}: ${x?esc(first(x))+(T.hrActive(S,l.id)?" ✓":" (needs HR Office)"):"none"}</span>`}).join("")}</div>`:""}`;
+  if(!office)return h+`<div class="why warn"><div><b>${LN.toUpperCase()} NEEDS AN HR OFFICE FIRST</b>Build one on a floor in this tower. It also makes room for 3 more people here per level.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`;
+  if(!d){const c=S.emps.filter(e=>(e.role==="staff"||e.role==="manager")&&T.homeOf(e)===lot).sort((a,b)=>b.chr-a.chr);
     return h+`<div class="why warn"><div><b>NO HR DIRECTOR YET</b>Choose someone to lead HR. They leave their current job, and their pay goes up 50%. Charm makes them better at lifting the team's mood.</div></div>
-    ${c.length?`<select data-act="mkhrsel"><option value="">Appoint an HR Director…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · CHR ${e.chr} · Lv${e.lvl} · ${esc(shortWhere(e))}</option>`).join("")}</select>`:`<div class="muted">Hire someone first.</div>`}`}
+    ${c.length?`<select data-act="mkhrsel"><option value="">Appoint an HR Director for ${LN}…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · CHR ${e.chr} · Lv${e.lvl} · ${esc(shortWhere(e))}</option>`).join("")}</select>`:`<div class="muted">Hire someone first.</div>`}`}
   h+=`<div class="slot">${ava(d)}<div class="who"><b>${esc(d.name)} <span class="muted">HR Director</span></b><div class="muted">Charm ${d.chr} · everyone's mood +${Math.round(3+d.chr*.5)} · ${money(d.salary)}/min</div></div><div class="acts"><button class="ghost" data-act="unassign" data-id="${d.id}">STEP DOWN</button></div></div>
-  <div class="sec"><h3>WHAT ${esc(first(d).toUpperCase())} HANDLES</h3>${HR_DUTIES.map(([k,l,desc])=>`<div class="toggle"><span><b class="tl">${l}</b><br><span class="muted">${desc}</span></span><button data-act="hrtoggle" data-k="${k}" class="${S.hr[k]?"green":"ghost"}" aria-pressed="${!!S.hr[k]}">${S.hr[k]?"ON":"OFF"}</button></div>`).join("")}</div>
-  <div class="sec"><h3>RECENT HR ACTIVITY</h3><div class="log">${S.hrLog.length?S.hrLog.slice(0,12).map(x=>`<div>${esc(x.m)}</div>`).join(""):`<div class="muted">Nothing needed yet. ${esc(first(d))} checks in every few seconds.</div>`}</div></div>`;
+  <div class="sec"><h3>WHAT ${esc(first(d).toUpperCase())} HANDLES</h3><div class="muted">These switches apply to every HR Director you have.</div>${HR_DUTIES.map(([k,l,desc])=>`<div class="toggle"><span><b class="tl">${l}</b><br><span class="muted">${desc}</span></span><button data-act="hrtoggle" data-k="${k}" class="${S.hr[k]?"green":"ghost"}" aria-pressed="${!!S.hr[k]}">${S.hr[k]?"ON":"OFF"}</button></div>`).join("")}</div>
+  <div class="sec"><h3>RECENT HR ACTIVITY</h3><div class="log">${S.hrLog.filter(x=>!x.lot||x.lot===lot).length?S.hrLog.filter(x=>!x.lot||x.lot===lot).slice(0,12).map(x=>`<div>${esc(x.m)}</div>`).join(""):`<div class="muted">Nothing needed yet. ${esc(first(d))} checks in every few seconds.</div>`}</div></div>`;
   return h}
-function promoSelect(e){const fl=[];for(const[lot,L0]of Object.entries(S.lots))L0.floors.forEach((f,i)=>{if(T.isBiz(f.type))fl.push({lot,i,f})});
+function promoSelect(e){const fl=[],lot=T.homeOf(e);S.lots[lot].floors.forEach((f,i)=>{if(T.isBiz(f.type))fl.push({lot,i,f})});
   return`<select data-act="promote" data-id="${e.id}"><option value="">Manage which floor?</option>${fl.map(x=>`<option value="${x.lot}:${x.i}">${T.BIZ[x.f.type].name} · ${T.lotDef(x.lot).name}${x.f.manager?" (replace "+esc(T.emp(S,x.f.manager)?.name||"")+")":""}</option>`).join("")}</select>`}
 
 /* ===== INBOX ===== */
@@ -408,18 +419,20 @@ function vBrokers(){const F=S.fund,cap=T.brokerCap(S),bs=T.brokers(S);
       <div class="muted">${esc(T.STRATS[strat].desc)}</div>
       <div class="bpos">${ps?`Holding <b>${p.q.toLocaleString()} ${p.t}</b> · bought at ${fmtP(p.cost)} · <span class="${ps.p>=p.cost?"up":"down"}">${pct(ps.p/p.cost-1)} (${money(p.q*(ps.p-p.cost))})</span>`:on?`<span class="muted">In cash, waiting for a good buy.</span>`:""}</div></div>
       <div class="acts"><button class="ghost" data-act="unassign" data-id="${e.id}">REMOVE</button></div></div>`});
-  if(bs.length<cap){const c=S.emps.filter(e=>e.role==="staff"||e.role==="manager").sort((a,b)=>T.brokerSkill(b)-T.brokerSkill(a));
-    h+=c.length?`<select data-act="mkbrokersel"><option value="">Add a broker (${cap-bs.length} seat${cap-bs.length>1?"s":""} open)…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · reads right ~${Math.round(T.brokerAcc(S,e)*100)}% · ${esc(shortWhere(e))}</option>`).join("")}</select><div class="muted">Brokers leave their current job. Their pay goes up 30%.</div>`:`<div class="muted">Hire someone to be a broker.</div>`}
+  if(bs.length<cap){const c=S.emps.filter(e=>(e.role==="staff"||e.role==="manager")&&T.homeOf(e)===S.cur).sort((a,b)=>T.brokerSkill(b)-T.brokerSkill(a));
+    h+=c.length?`<select data-act="mkbrokersel"><option value="">Add a broker (${cap-bs.length} seat${cap-bs.length>1?"s":""} open)…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · reads right ~${Math.round(T.brokerAcc(S,e)*100)}% · ${esc(shortWhere(e))}</option>`).join("")}</select><div class="muted">Showing people at ${esc(T.lotDef(S.cur).name)}. Visit another property to pick from its staff. Brokers leave their current job, and their pay goes up 30%.</div>`:`<div class="muted">Nobody at ${esc(T.lotDef(S.cur).name)} can become a broker. Hire someone here or visit another property.</div>`}
   h+=`</div>${T.fundValue(S)>=1?`<button class="ghost" data-act="withdraw">SELL EVERYTHING AND WITHDRAW (${money(T.fundValue(S))})</button>`:""}
   <div class="sec"><h3>RECENT TRADES</h3><div class="log">${F.log.length?F.log.slice(0,10).map(x=>x.a==="bought"?`<div><b>${esc(x.n)}</b> bought ${x.q.toLocaleString()} ${x.t}</div>`:`<div><b>${esc(x.n)}</b> sold ${x.t} at ${pct(x.r)}: <span class="${x.p>=0?"up":"down"}">${x.p>=0?"+":""}${money(x.p)}</span></div>`).join(""):`<div class="muted">No trades yet. Brokers act every 20 seconds.</div>`}</div></div>`;
   return h}
 
 /* ===== LAND ===== */
 V.land=()=>{let h=`<div class="head"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
-  <div class="muted">Each property is a new tower with its own staff, lounge and crowds. Districts boost certain businesses, and busier districts draw bigger crowds.</div><div class="grid2">`;
+  <div class="muted">Each property is a new tower with its own staff (hire them there), HR, lounge and crowds. Fancier districts unlock their own exclusive floors. Districts boost certain businesses, and busier districts draw bigger crowds.</div><div class="grid2">`;
   T.LOTS.forEach(l=>{const th=TOWER_THEMES[l.theme],own=S.lots[l.id],p=T.lotPrice(S,l),here=S.cur===l.id;
     h+=`<div class="card ${here?"sel":""}"><div class="thumb" style="background:linear-gradient(${th.sky.join(",")})"><div class="gr" style="background:${th.ground}"></div></div><b>${l.name}</b><div class="muted">${l.blurb}</div>`;
-    if(own){const inc=own.floors.reduce((a,f,i)=>a+(T.isBiz(f.type)?T.estPerMin(S,l.id,i,f):0),0);h+=`<div class="row spread"><span class="pill">${own.floors.length} FLOORS · ${money(inc)}/MIN</span><button class="${here?"ghost":"cyan"}" data-act="visit" data-l="${l.id}" ${here?"disabled":""}>${here?"YOU'RE HERE":"VISIT"}</button></div>`}
+    const ex=Object.values(T.BIZ).find(b=>b.only===l.id),ups=Object.values(T.SUPPORT).filter(b=>b.minLot!=null&&T.LOTS.findIndex(x=>x.id===l.id)===b.minLot);
+    if(ex||ups.length)h+=`<div class="up">Unlocks: ${[ex?ex.name+" (only here)":null,...ups.map(b=>b.name+" (here and fancier)")].filter(Boolean).join(", ")}</div>`;
+    if(own){const inc=own.floors.reduce((a,f,i)=>a+(T.isBiz(f.type)?T.estPerMin(S,l.id,i,f):0),0);h+=`<div class="row spread"><span class="pill">${own.floors.length} FLOORS · ${money(inc)}/MIN · ${T.headcount(S,l.id)}/${T.staffCap(S,l.id)} STAFF</span><button class="${here?"ghost":"cyan"}" data-act="visit" data-l="${l.id}" ${here?"disabled":""}>${here?"YOU'RE HERE":"VISIT"}</button></div>`}
     else h+=`<button data-act="buylot" data-l="${l.id}" ${cost(p)}>BUY ${money(p)}</button>`;h+=`</div>`});return h+`</div>`};
 
 /* ===== MONEY ===== */
@@ -478,14 +491,17 @@ function spend(c){if(S.cash<c)return false;S.cash-=c;S.spent+=c;return true}
 const ACT={
   tab:d=>setTab(d.t),
   addfloor:()=>$("#add-floor").click(),
-  gohr:()=>{const hr=Object.entries(S.lots).map(([l,L0])=>[l,L0.floors.findIndex(f=>f.type==="office")]).find(x=>x[1]>=0);if(hr&&hr[1]>=0&&S.lots[hr[0]].floors[hr[1]].lvl<T.MAX_SUP){if(hr[0]!==S.cur)goLot(hr[0]);sel=hr[1];view.sel=sel;setTab("floor");return}goEmptyFloor()},
-  build:d=>{const lot=S.cur;if(!spend(T.buildCost(d.t,lot)))return;S.lots[lot].floors[sel]=T.isBiz(d.t)?T.bizFloor(d.t):T.supFloor(d.t);view.construct(sel);T.log(S,`Opened a ${T.KINDS[d.t].name} at ${T.lotDef(lot).name}.`);
+  gohr:()=>{const lot=TU.sub&&tab==="team"?(allTowers()?S.cur:tl()):S.cur,L0=S.lots[lot];let i=L0.floors.findIndex(f=>f.type==="office"&&f.lvl<T.MAX_SUP);if(i<0)i=L0.floors.findIndex(f=>!f.type);
+    if(i<0)return toast(`No empty floor at ${T.lotDef(lot).name}. Use + FLOOR under the tower first.`);if(lot!==S.cur)goLot(lot);sel=i;view.sel=i;setTab("floor")},
+  build:d=>{const lot=S.cur;if(!T.allowedHere(d.t,lot))return toast("That can't be built here.");if(!spend(T.buildCost(d.t,lot)))return;S.lots[lot].floors[sel]=T.isBiz(d.t)?T.bizFloor(d.t):T.supFloor(d.t);view.construct(sel);T.log(S,`Opened a ${T.KINDS[d.t].name} at ${T.lotDef(lot).name}.`);
     act("build",T.isBiz(d.t)?"Now assign someone to the new station.":"Built! "+T.pick(T.AFFIRM))},
   station:()=>{const f=S.lots[S.cur].floors[sel];if(!spend(T.stationCost(f,S.cur)))return;f.stations++;f.staff.push(null);view.construct(sel);act("build","New station. Assign someone to it.")},
   decor:()=>{const f=S.lots[S.cur].floors[sel];if(!spend(T.decorCost(f,S.cur)))return;f.decor++;view.celebrate(sel);act("level",f.decor===5?"Your business now has its own neon sign!":f.decor===7?"A chandelier! Fancy.":T.pick(T.AFFIRM))},
   price:d=>{const f=S.lots[S.cur].floors[sel];f.price=+d.k;act("click")},
   supup:()=>{const f=S.lots[S.cur].floors[sel];if(!spend(T.supCost(f,S.cur)))return;f.lvl++;view.construct(sel);act("level")},
-  demolish:()=>{if(!armed.demo)return arm("demo");delete armed.demo;const f=S.lots[S.cur].floors[sel];
+  demolish:()=>{const f0=S.lots[S.cur].floors[sel];if(f0.type==="office"){const n=T.headcount(S,S.cur),after=T.staffCap(S,S.cur)-3*f0.lvl;
+      if(n>after){SFX.play("bad");return toast(`${n} people work at ${T.lotDef(S.cur).name}, but only ${after} would fit without this HR Office. Move or let go ${n-after} first.`)}}
+    if(!armed.demo)return arm("demo");delete armed.demo;const f=S.lots[S.cur].floors[sel];
     S.emps.forEach(e=>{if((e.loc&&e.loc.lot===S.cur&&e.loc.i===sel)||(e.at&&e.at.lot===S.cur&&e.at.i===sel))T.unassign(S,e.id)});if(T.isBiz(f.type))S.cash+=f.register;
     S.lots[S.cur].floors[sel]={type:null};delete rt.f[S.cur+":"+sel];act("bad","Floor cleared.")},
   collect:()=>{collect(S.cur,sel);dirty=true},
@@ -497,13 +513,17 @@ const ACT={
   ability:()=>{const f=S.lots[S.cur].floors[sel],m=T.emp(S,f.manager);if(!m||f.abil>Date.now())return;f.abil=Date.now()+300e3;
     if(m.ability==="pep"){f.staff.forEach(id=>{const e=T.emp(S,id);if(e){e.energy=100;e.mood=Math.min(100,e.mood+15)}});toast(`${first(m)} fired everyone up!`)}
     else{f.buff={kind:m.ability,until:Date.now()+60e3};toast(m.ability==="rush"?"Rush hour! Double customers for 60 seconds.":"Happy hour! +50% revenue for 60 seconds.")}act("up")},
-  hire:d=>{const a=S.applicants.find(x=>x.id===d.id),fee=T.hireFee(a);if(S.cash<fee||S.emps.length>=T.staffCap(S))return;S.cash-=fee;S.emps.push(a);S.applicants=S.applicants.filter(x=>x!==a);
-    T.log(S,`Hired ${a.name}.`);act("coin",`Welcome aboard, ${first(a)}! Give them a station on the Floor tab.`)},
+  hire:d=>{const a=S.applicants.find(x=>x.id===d.id),fee=T.hireFee(a),lot=d.l&&S.lots[d.l]?d.l:S.cur;if(S.cash<fee||T.roomAt(S,lot)<=0)return;S.cash-=fee;a.home=lot;S.emps.push(a);S.applicants=S.applicants.filter(x=>x!==a);
+    T.log(S,`Hired ${a.name} at ${T.lotDef(lot).name}.`);act("coin",`Welcome aboard, ${first(a)}! They'll work at ${T.lotDef(lot).name}. Give them a station on the Floor tab.`)},
+  moveemp:(d,el)=>{if(!el.value)return;const e=T.emp(S,d.id),to=el.value;if(T.roomAt(S,to)<=0)return toast(`${T.lotDef(to).name} is full.`);
+    const wasHr=e.role==="hr";if(e.role!=="broker")T.unassign(S,d.id);if(wasHr&&T.hrDirector(S,to)){e.role="staff";e.state="idle"}e.home=to;
+    act("coin",`${first(e)} moved to ${T.lotDef(to).name}.${wasHr&&e.role!=="hr"?" That tower already has an HR Director, so they're regular staff there.":""}`)},
+  tlot:d=>{TU.lot=d.k===S.cur?null:d.k;TU.open=null;act("click")},
   postad:()=>{if(S.cash<100)return;S.cash-=100;T.refreshApplicants(S);act("click")},
   praise:d=>{const e=T.emp(S,d.id);if(Date.now()-e.praisedAt<300e3)return;e.praisedAt=Date.now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);act("up",`${first(e)}: "${T.pick(["Thanks, boss!","That means a lot.","I'll keep it up!","Aw, shucks."])}"`)},
   raise:d=>{const e=T.emp(S,d.id);e.salary=Math.round(e.salary*1.15*100)/100;e.mood=Math.min(100,e.mood+20);e.low=0;act("coin",`${first(e)} now earns ${money(e.salary)}/min and is thrilled.`)},
-  train:d=>{const e=T.emp(S,d.id);let spot=null;for(const l of Object.keys(S.lots)){const i=T.findSupport(S,l,"training");if(i>=0&&T.seatsFree(S,l,"training")>0){spot={lot:l,i};break}}
-    if(!spot)return toast("No free training seats.");e.state="train";e.at=spot;act("click",`${first(e)} is off to training. Their station is empty until they're back.`)},
+  train:d=>{const e=T.emp(S,d.id),l=T.homeOf(e),i=T.findSupport(S,l,"training");const spot=i>=0&&T.seatsFree(S,l,"training")>0?{lot:l,i}:null;
+    if(!spot)return toast(`No free training seats at ${T.lotDef(l).name}. Each tower needs its own Training Room.`);e.state="train";e.at=spot;act("click",`${first(e)} is off to training. Their station is empty until they're back.`)},
   stoptrain:d=>{const e=T.emp(S,d.id);e.state=e.loc?(e.loc.mgr?"manage":"work"):"idle";e.at=null;act("click")},
   rest:d=>{const e=T.emp(S,d.id),li=T.findSupport(S,e.loc.lot,"lounge");if(li<0||T.seatsFree(S,e.loc.lot,"lounge")<=0)return toast("The lounge is full right now.");e.state="break";e.at={lot:e.loc.lot,i:li};act("click")},
   point:d=>{const e=T.emp(S,d.id);if(e.pts<1||e[d.s]>=10)return;e.pts--;e[d.s]++;act("level",`${first(e)} got better at ${{spd:"speed",chr:"charm",sta:"stamina"}[d.s]}!`)},
@@ -518,7 +538,7 @@ const ACT={
   mkbrokersel:(d,el)=>{if(!el.value)return;ACT.mkbroker({id:el.value})},
   mkbroker:d=>{if(T.brokers(S).length>=T.brokerCap(S))return toast("No broker seats. Upgrade a Trading Desk.");const e=T.emp(S,d.id);T.setRole(S,d.id,"broker");act("fanfare",`${first(e)} is now a broker!`)},
   mkhrsel:(d,el)=>{if(!el.value)return;ACT.mkhr({id:el.value})},
-  mkhr:d=>{const old=T.hrDirector(S);if(old)T.unassign(S,old.id);const e=T.emp(S,d.id);T.setRole(S,d.id,"hr");TU.sub="hr";act("fanfare",`${first(e)} is your new HR Director!`)},
+  mkhr:d=>{const e=T.emp(S,d.id),lot=T.homeOf(e),old=T.hrDirector(S,lot);if(old)T.unassign(S,old.id);T.setRole(S,d.id,"hr");TU.sub="hr";TU.lot=lot===S.cur?null:lot;act("fanfare",`${first(e)} is the new HR Director at ${T.lotDef(lot).name}!`)},
   hrtoggle:d=>{S.hr[d.k]=!S.hr[d.k];act("click")},
   teamsub:(d,el,ev)=>{ev?.preventDefault?.();TU.sub=d.k;TU.open=null;act("click");$("#body").scrollTop=0},
   tfilter:d=>{TU.filter=d.k;TU.limit=40;act("click")},
@@ -526,10 +546,10 @@ const ACT={
   tmore:()=>{TU.limit+=40;act("click")},
   openemp:d=>{TU.open=TU.open===d.id?null:d.id;act("click")},
   placeemp:(d,el)=>{if(!el.value)return;const[lot,i,k]=el.value.split(":"),e=T.emp(S,d.id);T.assign(S,d.id,lot,+i,+k);act("coin",`${first(e)} is on the ${T.BIZ[S.lots[lot].floors[+i].type].name}.`)},
-  payfair:()=>{let n=0;S.emps.forEach(e=>{if(underpaid(e)){e.salary=Math.round(T.fairPay(e)*1.02*100)/100;e.mood=Math.min(100,e.mood+10);e.low=0;n++}});act("coin",`${n} people got a fair raise. Morale is up.`)},
-  praiseall:()=>{let n=0;S.emps.forEach(e=>{if(praiseReady(e)&&e.mood<80){e.praisedAt=Date.now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);n++}});act("up",`You thanked ${n} people. Smiles all around.`)},
-  spendall:()=>{let n=0;S.emps.forEach(e=>{while(e.pts>0){if(!T.spendPoint(e))break;e.pts--;n++}});act("level",`Spent ${n} skill point${n>1?"s":""}: speed first, then charm, then stamina.`)},
-  fillall:()=>{let n=0;for(const e of S.emps.filter(e=>e.role==="staff"&&e.state==="idle")){const es=T.emptyStations(S),b=es.find(x=>x.f.type===e.fav)||es[0];if(!b)break;T.assign(S,e.id,b.lot,b.i,b.k);n++}act("coin",`${n} empty station${n>1?"s":""} filled.`)},
+  payfair:()=>{let n=0;teamSet().forEach(e=>{if(underpaid(e)){e.salary=Math.round(T.fairPay(e)*1.02*100)/100;e.mood=Math.min(100,e.mood+10);e.low=0;n++}});act("coin",`${n} people got a fair raise. Morale is up.`)},
+  praiseall:()=>{let n=0;teamSet().forEach(e=>{if(praiseReady(e)&&e.mood<80){e.praisedAt=Date.now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);n++}});act("up",`You thanked ${n} people. Smiles all around.`)},
+  spendall:()=>{let n=0;teamSet().forEach(e=>{while(e.pts>0){if(!T.spendPoint(e))break;e.pts--;n++}});act("level",`Spent ${n} skill point${n>1?"s":""}: speed first, then charm, then stamina.`)},
+  fillall:()=>{let n=0;for(const e of teamSet().filter(e=>e.role==="staff"&&e.state==="idle")){const es=T.emptyStations(S,(f,l)=>l===T.homeOf(e)),b=es.find(x=>x.f.type===e.fav)||es[0];if(!b)break;T.assign(S,e.id,b.lot,b.i,b.k);n++}act("coin",`${n} empty station${n>1?"s":""} filled.`)},
   buy:d=>{const st=S.stocks.find(s=>s.t===mktSel),fe=T.fee(S),q=Math.floor(Math.max(0,S.cash)*+d.p/(st.p*(1+fe)));const r=T.buyStock(S,st.t,q);if(!r)return;act("coin",`Bought ${q.toLocaleString()} ${st.t} for ${money(r.cost)}.`)},
   sell:d=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,q=+d.p>=1?own:Math.floor(own*+d.p);const r=T.sellStock(S,st.t,q);if(!r)return;act(r.pnl>=0?"cash":"bad",`Sold ${q.toLocaleString()} ${st.t} for ${money(r.value)} (${r.pnl>=0?"+":""}${money(r.pnl)}).`)},
   order:d=>{const o=S.orders[mktSel]||(S.orders[mktSel]={});o[d.k]=+d.v;if(!o.tp&&!o.sl)delete S.orders[mktSel];act("click",+d.v?`${d.k==="tp"?"Take profit":"Stop loss"} set at ${d.k==="tp"?"+":"−"}${+d.v*100}%.`:"Order cleared.")},

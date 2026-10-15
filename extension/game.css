@@ -219,3 +219,8 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 
 /* panel sections never shrink; the panel scrolls instead (fixes the stock list collapsing to zero height) */
 .body>*{flex-shrink:0}
+
+.tchips button{font-size:7px}
+.tchips button.over{border-color:var(--red);color:var(--red)}
+.tchips button.over[aria-pressed="true"]{background:var(--red);color:var(--night)}
+.card.excl{border-color:var(--gold)}

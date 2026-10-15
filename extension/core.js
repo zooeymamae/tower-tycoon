@@ -17,6 +17,15 @@ const BIZ={
   arcade:  {name:"Arcade",     color:"#5ad1ff",price:170,time:14,arrive:4.5,cost:45000, rank:4,desc:"Games and prizes. Big spenders who stay a while."},
   spa:     {name:"Day Spa",    color:"#5ee08a",price:520,time:24,arrive:2.8,cost:250e3, rank:6,desc:"Pampering. Guests expect a beautiful space."},
   dining:  {name:"Sky Dining", color:"#ffcc3d",price:1700,time:36,arrive:1.9,cost:1.8e6, rank:8,desc:"Fine dining. Every single guest is a big deal."},
+  // district exclusives: only buildable in one property
+  seafood: {name:"Seafood Shack",color:"#4fc3d9",price:60,  time:8, arrive:7,  cost:14500, rank:0,only:"harbor",desc:"Fresh catch off the pier. Fast, busy and only on Harbor Pier."},
+  vr:      {name:"VR Arcade",    color:"#7a6bff",price:240, time:15,arrive:4,  cost:39000, rank:0,only:"tech",  desc:"Headsets and holograms. Only in Tech Park."},
+  cinema:  {name:"Cinema",       color:"#e04a5a",price:420, time:22,arrive:4,  cost:59000, rank:0,only:"mall",  desc:"Blockbusters and popcorn. Only in Mega Mall."},
+  club:    {name:"Nightclub",    color:"#ff3dd0",price:900, time:26,arrive:3,  cost:160e3, rank:0,only:"neon",  desc:"Velvet ropes and a packed dance floor. Only on Neon Strip."},
+  resort:  {name:"Resort Pool",  color:"#3ad6c4",price:2600,time:40,arrive:2,  cost:417e3, rank:0,only:"oasis", desc:"Cabanas and cocktails. Only at Desert Oasis."},
+  skylounge:{name:"Sky Lounge",  color:"#9ec9ff",price:7000,time:45,arrive:1.6,cost:1.22e6,rank:0,only:"sky",   desc:"Drinks above the clouds. Only in Skyline Heights."},
+  zerog:   {name:"Zero-G Hotel", color:"#c8c8ff",price:25000,time:60,arrive:1.2,cost:3.8e6,rank:0,only:"moon",  desc:"Float to sleep. Only on Moon Base."},
+  dome:    {name:"Dome Resort",  color:"#ff8a5a",price:90000,time:70,arrive:1, cost:12.8e6,rank:0,only:"mars",  desc:"A garden under glass on Mars. Only on Mars Colony."},
 };
 const SUPPORT={
   lounge:   {name:"Staff Lounge", color:"#b78cff",cost:800, desc:"Tired staff in this tower rest here, then go back to work at full energy. 2 seats per level."},
@@ -24,6 +33,10 @@ const SUPPORT={
   training: {name:"Training Room",color:"#9ad8ff",cost:2000,desc:"Send staff here to learn. They earn XP quickly. 2 seats per level."},
   office:   {name:"HR Office",    color:"#e8e0c8",cost:1000,desc:"+3 people you can employ, per level."},
   trade:    {name:"Trading Desk", color:"#2fbf71",cost:3000,desc:"Gives you stock tips and lowers trading fees."},
+  // upscale support floors for pricier districts (minLot = first property where it unlocks)
+  valet:    {name:"Valet Garage", color:"#c9c4ea",cost:30000,minLot:3,desc:"Drivers park for your guests: +10% customers on every business in this tower, per level."},
+  helipad:  {name:"VIP Helipad",  color:"#ffd36b",cost:90000,minLot:6,desc:"VIP guests fly in: +8% revenue on every business in this tower, per level."},
+  robots:   {name:"Robot Bay",    color:"#8fe3ff",cost:250e3,minLot:7,desc:"Robot helpers take the heavy lifting: staff in this tower tire 15% slower, per level."},
 };
 const KINDS={...BIZ,...SUPPORT};
 const isBiz=t=>!!BIZ[t];
@@ -98,7 +111,7 @@ const STOCK_DEFS=[
 const mkStock=d=>{const s={...d,base:d.p,hist:Array.from({length:30},(_,i)=>d.p*(1+Math.sin(i/4)*.04+rnd(-.03,.03))),trend:rnd(-.01,.01)};scheduleEarnings(s);s.earnIn=s.earnIn&&ri(4,30);return s};
 function mkStocks(){return STOCK_DEFS.map(mkStock)}
 function fresh(){
-  const first=mkEmp(0,{trait:"loyal"});first.fav="cafe";first.spd=4;first.chr=4;first.sta=4;first.salary=Math.round(fairPay(first)*100)/100;
+  const first=mkEmp(0,{trait:"loyal"});first.home="main";first.fav="cafe";first.spd=4;first.chr=4;first.sta=4;first.salary=Math.round(fairPay(first)*100)/100;
   const S={v:3,cash:500,rep:5,cur:"main",day:1,
     lots:{main:{floors:[bizFloor("cafe"),{type:null}]}},
     emps:[first],applicants:[],appAt:0,inbox:[],deals:[],stocks:mkStocks(),port:{},tips:{},buffs:[],contracts:[],
@@ -117,7 +130,11 @@ const lotTraffic=id=>1+.12*lotIdx(id);
 const emp=(S,id)=>id?S.emps.find(e=>e.id===id):null;
 function lotSum(S,lot,t){return(S.lots[lot]?.floors||[]).filter(f=>f.type===t).reduce((a,f)=>a+f.lvl,0)}
 function coSum(S,t){let n=0;for(const id in S.lots)n+=lotSum(S,id,t);return n}
-const staffCap=S=>4+3*coSum(S,"office");
+/* every employee belongs to one property; each property has its own staff limit */
+const homeOf=e=>e.home||"main";
+const staffCap=(S,lot=S.cur)=>4+3*lotSum(S,lot,"office");
+const headcount=(S,lot=S.cur)=>S.emps.filter(e=>homeOf(e)===lot).length;
+const roomAt=(S,lot=S.cur)=>staffCap(S,lot)-headcount(S,lot);
 const hypeMult=S=>1+Math.sqrt(Math.max(0,S.rep))/12;
 const maxFloors=S=>Math.min(20,3+S.goalIdx);
 const floorCost=(S,lot)=>Math.round(400*Math.pow(1.8,Math.max(0,S.lots[lot].floors.length-2))*lotTier(lot));
@@ -130,6 +147,8 @@ const lotPrice=(S,l)=>Math.round(l.price*(1-(S.landDiscount||0)));
 const goal=i=>Math.round(2500*Math.pow(2.6,i));
 const rank=S=>RANKS[Math.min(RANKS.length-1,S.goalIdx)]+(S.goalIdx>=RANKS.length?" "+(S.goalIdx-RANKS.length+2):"");
 const unlocked=(S,t)=>!isBiz(t)||BIZ[t].rank<=S.goalIdx;
+/* can this floor type be built on this property at all? */
+const allowedHere=(t,lot)=>{const k=KINDS[t];if(!k)return false;if(k.only&&k.only!==lot)return false;if(k.minLot!=null&&lotIdx(lot)<k.minLot)return false;return true};
 const MAX_ST=5,MAX_DECOR=10,MAX_SUP=5;
 
 /* ---------- economics of one business floor ---------- */
@@ -138,8 +157,8 @@ function fbuff(f,k){return f.buff&&f.buff.kind===k&&f.buff.until>now()}
 function gbuff(S,k){return S.buffs.filter(b=>b.kind===k&&!b.lot&&b.until>now()).reduce((a,b)=>a*b.mult,1)}
 function lbuff(S,lot,k){return S.buffs.filter(b=>b.kind===k&&b.lot===lot&&b.until>now()).reduce((a,b)=>a*b.mult,1)}
 function arrivalsPerMin(S,lot,f){const B=BIZ[f.type],T=TIERS[f.price];
-  return B.arrive*(.35+f.rating*.18)*hypeMult(S)*T.demand*(1+.06*f.decor)*(1+.15*lotSum(S,lot,"marketing"))*lotTraffic(lot)*lbuff(S,lot,"traffic")*(fbuff(f,"rush")?2:1)}
-function revenue(S,lot,f){return BIZ[f.type].price*TIERS[f.price].mult*lotMult(lot,f.type)*(1+f.decor*.15)*gbuff(S,"rev")*(fbuff(f,"happy")?1.5:1)}
+  return B.arrive*(.35+f.rating*.18)*hypeMult(S)*T.demand*(1+.06*f.decor)*(1+.15*lotSum(S,lot,"marketing"))*(1+.1*lotSum(S,lot,"valet"))*lotTraffic(lot)*lbuff(S,lot,"traffic")*(fbuff(f,"rush")?2:1)}
+function revenue(S,lot,f){return BIZ[f.type].price*TIERS[f.price].mult*lotMult(lot,f.type)*(1+f.decor*.15)*(1+.08*lotSum(S,lot,"helipad"))*gbuff(S,"rev")*(fbuff(f,"happy")?1.5:1)}
 function present(S,lot,i,f,k){const e=emp(S,f.staff[k]);return e&&e.state==="work"&&e.loc&&e.loc.lot===lot&&e.loc.i===i&&e.loc.slot===k?e:null}
 function speedF(e,f,mgr){return(.6+e.spd*.09)*(e.fav===f.type?1.2:1)*(e.energy<=0?.35:e.energy<25?.6:1)*(mgr?1.1:1)}
 const svcTime=(e,f,mgr)=>BIZ[f.type].time/speedF(e,f,mgr);
@@ -174,8 +193,8 @@ const brokers=S=>S.emps.filter(e=>e.role==="broker");
 const brokerCap=S=>coSum(S,"trade");
 const brokerSkill=e=>e.spd*.5+e.chr*.3+Math.min(10,e.lvl)*.4;
 const brokerAcc=(S,e)=>Math.min(.655,.5+.013*brokerSkill(e)+.006*coSum(S,"trade"));
-const hrDirector=S=>S.emps.find(e=>e.role==="hr");
-const hrActive=S=>!!hrDirector(S)&&coSum(S,"office")>0;
+const hrDirector=(S,lot=S.cur)=>S.emps.find(e=>e.role==="hr"&&homeOf(e)===lot);
+const hrActive=(S,lot=S.cur)=>!!hrDirector(S,lot)&&lotSum(S,lot,"office")>0;
 function seatsFree(S,lot,type){const cap=2*lotSum(S,lot,type);const used=S.emps.filter(e=>(e.state==="break"||e.state==="train")&&e.at&&e.at.lot===lot&&S.lots[lot].floors[e.at.i]?.type===type).length;return cap-used}
 function findSupport(S,lot,type){return(S.lots[lot]?.floors||[]).findIndex(f=>f.type===type)}
 
@@ -226,7 +245,7 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
     if(!st.c){const q=r.cust.filter(c=>c.s==="q"||c.s==="in").sort((a,b)=>(b.vip-a.vip)||(a.id-b.id))[0];
       if(q&&q.s==="q"){q.s="go";q.k=k;st.c=q.id;st.prog=0}}
     else{const c=r.cust.find(x=>x.id===st.c);if(!c){st.c=null;continue}
-      if(c.s==="at"){st.prog+=dt/svcTime(e,f,!!mgr);e.energy=Math.max(0,e.energy-dt*100/(200+e.sta*45));
+      if(c.s==="at"){st.prog+=dt/svcTime(e,f,!!mgr);e.energy=Math.max(0,e.energy-dt*100/(200+e.sta*45)/(1+.15*lotSum(S,lot,"robots")));
         if(st.prog>=1)finish(S,rt,lot,i,f,r,c,e,k,t,ev)}}}
   // stations whose worker left mid-service: send the customer back to the front of the line
   for(let k=0;k<r.st.length;k++){const st=r.st[k];if(st.c&&(k>=f.stations||!present(S,lot,i,f,k))){const c=r.cust.find(x=>x.id===st.c);if(c){c.s="q";c.k=undefined}st.c=null;st.prog=0}}
@@ -270,21 +289,21 @@ function review(f,stars,text,name){f.reviews.unshift({s:clamp(stars,1,5),t:text,
 function simStaff(S,dt,t,ev){
   for(const e of[...S.emps]){
     const tr=trait(e);
-    if(e.state==="work"){if(!e.busy)e.energy=Math.max(0,e.energy-dt*30/(200+e.sta*45));
+    if(e.state==="work"){if(!e.busy)e.energy=Math.max(0,e.energy-dt*30/(200+e.sta*45)/(1+.15*lotSum(S,e.loc?.lot,"robots")));
       if(e.energy<25&&e.loc&&!e.noBreak){const li=findSupport(S,e.loc.lot,"lounge");
         if(li>=0&&seatsFree(S,e.loc.lot,"lounge")>0){e.state="break";e.at={lot:e.loc.lot,i:li};e.busy=false;ev.push({dirty:1})}}}
     else if(e.state==="break"){e.energy=Math.min(100,e.energy+dt*2*(1+.25*(lotSum(S,e.at.lot,"lounge")-1)));
       if(e.energy>=95){e.state=e.loc?(e.loc.mgr?"manage":"work"):"idle";e.at=null;ev.push({dirty:1})}}
     else if(e.state==="train"){const tl=Math.max(1,lotSum(S,e.at.lot,"training"));e.xp+=dt*.25*(1+.3*(tl-1))*(tr.xp||1);e.energy=Math.max(0,e.energy-dt*.15);
-      if(e.energy<15){e.state=e.loc?"work":"idle";e.at=null;ev.push(hrActive(S)&&S.hr.training?{dirty:1}:{kind:"info",title:"TRAINING DONE",text:`${e.name} is worn out and left training.`,dirty:1})}}
+      if(e.energy<15){e.state=e.loc?"work":"idle";e.at=null;ev.push(hrActive(S,homeOf(e))&&S.hr.training?{dirty:1}:{kind:"info",title:"TRAINING DONE",text:`${e.name} is worn out and left training.`,dirty:1})}}
     else e.energy=Math.min(100,e.energy+dt*(e.state==="idle"?.8:.2));
     const fair=fairPay(e),payGap=(e.salary/fair-1)*80;
     const atFav=e.loc&&!e.loc.mgr&&S.lots[e.loc.lot]?.floors[e.loc.i]?.type===e.fav;
-    let target=65+payGap+(atFav?12:0)+(e.energy<25?-25:0)+(t-e.praisedAt<300e3?12:0)+(S.cash<0?-30:0)+(e.state==="idle"?-8:0)+(e.role!=="staff"?10:0)+(hrActive(S)&&e.role!=="hr"?3+hrDirector(S).chr*.5:0);
+    let target=65+payGap+(atFav?12:0)+(e.energy<25?-25:0)+(t-e.praisedAt<300e3?12:0)+(S.cash<0?-30:0)+(e.state==="idle"?-8:0)+(e.role!=="staff"?10:0)+(e.role!=="hr"&&hrActive(S,homeOf(e))?3+hrDirector(S,homeOf(e)).chr*.5:0);
     target=clamp(target,0,100);if(tr.loyal)target=Math.max(target,40);
     e.mood=clamp(e.mood+(target-e.mood)*dt/90,0,100);
     while(e.xp>=xpNeed(e.lvl)){e.xp-=xpNeed(e.lvl);e.lvl++;e.pts++;
-      ev.push(hrActive(S)&&S.hr.points?{dirty:1}:{kind:"good",title:"LEVEL UP!",text:`${e.name} reached level ${e.lvl}. Spend their skill point in Team.`,sfx:"level",dirty:1});log(S,`${e.name} reached level ${e.lvl}.`)}
+      ev.push(hrActive(S,homeOf(e))&&S.hr.points?{dirty:1}:{kind:"good",title:"LEVEL UP!",text:`${e.name} reached level ${e.lvl}. Spend their skill point in Team.`,sfx:"level",dirty:1});log(S,`${e.name} reached level ${e.lvl}.`)}
     if(e.mood<25){e.low+=dt;if(e.low>40&&!S.inbox.some(x=>x.kind==="unhappy"&&x.emp===e.id)){S.inbox.unshift(mkUnhappy(S,e));ev.push({kind:"bad",title:`${e.name.toUpperCase()} IS UNHAPPY`,text:"Check your inbox before they walk out.",sfx:"alert",dirty:1})}
       if(e.low>300){unassign(S,e.id);S.emps=S.emps.filter(x=>x!==e);S.inbox=S.inbox.filter(x=>x.emp!==e.id);
         ev.push({kind:"bad",title:"RESIGNATION",text:`${e.name} quit. They felt ${payGap<-10?"underpaid":e.energy<25?"burned out":"ignored"}.`,sfx:"bad",dirty:1});log(S,`${e.name} quit.`)}}
@@ -388,32 +407,32 @@ function brokerTick(S,moves,ev){
   F.log=F.log.slice(0,14);return fundValue(S)}
 
 /* ---------- HR director: runs the people side of the company ---------- */
-function hrLog(S,m){S.hrLog.unshift({m,at:now()});S.hrLog=S.hrLog.slice(0,20)}
+function hrLog(S,m,lot){S.hrLog.unshift({m,at:now(),lot});S.hrLog=S.hrLog.slice(0,40)}
 function spendPoint(e){const order=["spd","chr","sta"];for(const cap of[8,10])for(const k of order)if(e[k]<cap){e[k]++;return k}return null}
 function emptyStations(S,pred=()=>true){const out=[];for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type)&&pred(f,lot,i))f.staff.forEach((x,k)=>{if(!x)out.push({lot,i,k,f})})});return out}
-function hrTick(S,rt,ev){
-  if(!hrActive(S))return;const P=S.hr,d=hrDirector(S),fn=e=>e.name.split(" ")[0];let acts=0;const t=now();
-  if(P.requests)for(const it of[...S.inbox]){if(!it.emp)continue;const a=it.kind==="unhappy"?"raise":it.kind==="transfer"?"transfer":it.kind==="promo"?(P.promote?"promo":null):null;
-    if(a){const r=resolveInbox(S,rt,it.id,a);if(r.ok){hrLog(S,`Handled a request: ${r.msg}`);acts++}}}
-  for(const e of S.emps){
-    if(P.raises){const fair=fairPay(e);if(e.salary<fair*.97){e.salary=Math.round(fair*1.02*100)/100;hrLog(S,`Raised ${fn(e)} to ${money(e.salary)}/min.`);acts++}}
-    if(P.praise&&e.mood<55&&t-e.praisedAt>300e3){e.praisedAt=t;e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);hrLog(S,`Checked in with ${fn(e)}.`);acts++}
-    if(P.points)while(e.pts>0){const k=spendPoint(e);if(!k)break;e.pts--;hrLog(S,`Trained ${fn(e)}'s ${{spd:"speed",chr:"charm",sta:"stamina"}[k]}.`);acts++}}
-  if(P.promote)for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(!isBiz(f.type)||f.manager)return;
-    const c=S.emps.filter(e=>e.role==="staff"&&e.lvl>=3).sort((a,b)=>(b.promoReady-a.promoReady)||(b.lvl-a.lvl))[0];
-    if(c){setManager(S,c.id,lot,i);hrLog(S,`Promoted ${fn(c)} to manage the ${BIZ[f.type].name}.`);ev.push({kind:"good",title:"NEW MANAGER",text:`Your HR Director promoted ${c.name} to manage the ${BIZ[f.type].name}.`,sfx:"up",dirty:1});acts++}});
-  const idle=()=>S.emps.filter(e=>e.role==="staff"&&!e.loc&&e.state==="idle");
-  if(P.staffing){for(const e of idle()){const es=emptyStations(S),best=es.find(x=>x.f.type===e.fav)||es[0];if(!best)break;
-      assign(S,e.id,best.lot,best.i,best.k);hrLog(S,`Put ${fn(e)} on the ${BIZ[best.f.type].name}${best.f.type===e.fav?" (their favorite)":""}.`);acts++}}
-  if(P.favorites)for(const e of S.emps){if(e.role!=="staff"||!e.loc||e.state!=="work")continue;const cur=S.lots[e.loc.lot]?.floors[e.loc.i];if(!cur||cur.type===e.fav)continue;
-    const spot=emptyStations(S,f=>f.type===e.fav)[0];if(spot){assign(S,e.id,spot.lot,spot.i,spot.k);hrLog(S,`Moved ${fn(e)} to the ${BIZ[e.fav].name} they love.`);acts++}}
-  if(P.staffing&&P.favorites){// swap two people who would each prefer the other's job
-    const ws=S.emps.filter(e=>e.role==="staff"&&e.loc&&e.state==="work");
+function hrTick(S,rt,ev){for(const lot of Object.keys(S.lots))hrTickLot(S,rt,ev,lot)}
+function hrTickLot(S,rt,ev,lot){
+  if(!hrActive(S,lot))return;const P=S.hr,d=hrDirector(S,lot),fn=e=>e.name.split(" ")[0],mine=e=>homeOf(e)===lot,here=f=>(f2,l)=>l===lot&&f(f2);let acts=0;const t=now();
+  const log=m=>{hrLog(S,m,lot);acts++};
+  if(P.requests)for(const it of[...S.inbox]){const e=emp(S,it.emp);if(!e||!mine(e))continue;const a=it.kind==="unhappy"?"raise":it.kind==="transfer"?"transfer":it.kind==="promo"?(P.promote?"promo":null):null;
+    if(a){const r=resolveInbox(S,rt,it.id,a);if(r.ok)log(`Handled a request: ${r.msg}`)}}
+  for(const e of S.emps){if(!mine(e))continue;
+    if(P.raises){const fair=fairPay(e);if(e.salary<fair*.97){e.salary=Math.round(fair*1.02*100)/100;log(`Raised ${fn(e)} to ${money(e.salary)}/min.`)}}
+    if(P.praise&&e.mood<55&&t-e.praisedAt>300e3){e.praisedAt=t;e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);log(`Checked in with ${fn(e)}.`)}
+    if(P.points)while(e.pts>0){const k=spendPoint(e);if(!k)break;e.pts--;log(`Trained ${fn(e)}'s ${{spd:"speed",chr:"charm",sta:"stamina"}[k]}.`)}}
+  if(P.promote)S.lots[lot].floors.forEach((f,i)=>{if(!isBiz(f.type)||f.manager)return;
+    const c=S.emps.filter(e=>mine(e)&&e.role==="staff"&&e.lvl>=3).sort((a,b)=>(b.promoReady-a.promoReady)||(b.lvl-a.lvl))[0];
+    if(c){setManager(S,c.id,lot,i);log(`Promoted ${fn(c)} to manage the ${BIZ[f.type].name}.`);ev.push({kind:"good",title:"NEW MANAGER",text:`${d.name} promoted ${c.name} to manage the ${BIZ[f.type].name} at ${lotDef(lot).name}.`,sfx:"up",dirty:1})}});
+  const idle=()=>S.emps.filter(e=>mine(e)&&e.role==="staff"&&!e.loc&&e.state==="idle");
+  if(P.staffing){for(const e of idle()){const es=emptyStations(S,here(()=>true)),best=es.find(x=>x.f.type===e.fav)||es[0];if(!best)break;
+      assign(S,e.id,best.lot,best.i,best.k);log(`Put ${fn(e)} on the ${BIZ[best.f.type].name}${best.f.type===e.fav?" (their favorite)":""}.`)}}
+  if(P.favorites)for(const e of S.emps){if(!mine(e)||e.role!=="staff"||!e.loc||e.state!=="work")continue;const cur=S.lots[e.loc.lot]?.floors[e.loc.i];if(!cur||cur.type===e.fav)continue;
+    const spot=emptyStations(S,here(f=>f.type===e.fav))[0];if(spot){assign(S,e.id,spot.lot,spot.i,spot.k);log(`Moved ${fn(e)} to the ${BIZ[e.fav].name} they love.`)}}
+  if(P.staffing&&P.favorites){const ws=S.emps.filter(e=>mine(e)&&e.role==="staff"&&e.loc&&e.state==="work");
     outer:for(const a of ws){const fa=S.lots[a.loc.lot].floors[a.loc.i];if(fa.type===a.fav)continue;
       for(const b of ws){if(b===a)continue;const fb=S.lots[b.loc.lot].floors[b.loc.i];if(fb.type===a.fav&&fb.type!==b.fav){
-        const la={...a.loc},lb={...b.loc};assign(S,a.id,lb.lot,lb.i,lb.slot);assign(S,b.id,la.lot,la.i,la.slot);hrLog(S,`Swapped ${fn(a)} and ${fn(b)} so ${fn(a)} works where they're happiest.`);acts++;break outer}}}}
-  if(P.training)for(const e of idle()){let spot=null;for(const l of Object.keys(S.lots)){const i=findSupport(S,l,"training");if(i>=0&&seatsFree(S,l,"training")>0&&e.energy>60){spot={lot:l,i};break}}
-    if(!spot)break;e.state="train";e.at=spot;hrLog(S,`Sent ${fn(e)} to training while there's no open station.`);acts++}
+        const la={...a.loc},lb={...b.loc};assign(S,a.id,lb.lot,lb.i,lb.slot);assign(S,b.id,la.lot,la.i,la.slot);log(`Swapped ${fn(a)} and ${fn(b)} so ${fn(a)} works where they're happiest.`);break outer}}}}
+  if(P.training){const ti=findSupport(S,lot,"training");if(ti>=0)for(const e of idle()){if(seatsFree(S,lot,"training")<=0)break;if(e.energy<=60)continue;e.state="train";e.at={lot,i:ti};log(`Sent ${fn(e)} to training while there's no open station.`)}}
   if(acts){d.xp+=.2*acts;ev.push({dirty:1})}
 }
 
@@ -428,7 +447,7 @@ function mkUnhappy(S,e){const fair=fairPay(e),gap=e.salary<fair*.95,first=e.name
 function genInbox(S){
   if(S.inbox.length>=5)return null;const opts=[];const t=now();
   const emps=S.emps.filter(e=>!S.inbox.some(x=>x.emp===e.id));
-  const wantsFav=emps.find(e=>e.role==="staff"&&e.loc&&!e.loc.mgr&&S.lots[e.loc.lot].floors[e.loc.i].type!==e.fav&&bestFloor(S,f=>f.type===e.fav));
+  const wantsFav=emps.find(e=>e.role==="staff"&&e.loc&&!e.loc.mgr&&S.lots[e.loc.lot].floors[e.loc.i].type!==e.fav&&S.lots[homeOf(e)]?.floors.some(f=>f.type===e.fav));
   if(wantsFav)opts.push(()=>({kind:"transfer",emp:wantsFav.id,title:`${wantsFav.name} has a request`,text:`${wantsFav.name.split(" ")[0]} loves working at a ${BIZ[wantsFav.fav].name} and asked to transfer. They'd be 20% faster and happier there.`,ch:[{l:"Transfer them",a:"transfer"},{l:"Not right now",a:"deny"}]}));
   const amb=emps.find(e=>e.role==="staff"&&e.lvl>=4&&!e.promoReady);
   if(amb)opts.push(()=>({kind:"promo",emp:amb.id,title:`${amb.name} wants to lead`,text:`${amb.name.split(" ")[0]} asked to become a manager. Managers collect cash on their own, speed up their floor 10%, and keep it earning while you're away.`,ch:[{l:"Promote them",a:"promo"},{l:"Not yet",a:"deny"}]}));
@@ -446,7 +465,7 @@ function resolveInbox(S,rt,id,a){
   if(a==="deny"){if(e){e.mood=Math.max(0,e.mood-8);msg=`${first} is a little disappointed.`}else msg="Passed."}
   if(a==="raise"&&e){const fair=fairPay(e);if(e.salary<fair*.95){e.salary=Math.round(fair*1.05*100)/100}else{const b=Math.round(e.salary*30);if(S.cash<b)return{ok:false,msg:`You need ${money(b)}.`};S.cash-=b}e.mood=Math.min(100,e.mood+30);e.low=0;msg=`${first} feels valued again.`}
   if(a==="praise"&&e){e.praisedAt=now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);msg=`${first} appreciated the talk.`}
-  if(a==="transfer"&&e){let done=false;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(done||f.type!==e.fav)return;const k=f.staff.findIndex(x=>!x);if(k<0)return;assign(S,e.id,lot,i,k);done=true});
+  if(a==="transfer"&&e){let done=false;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(done||f.type!==e.fav||lot!==homeOf(e))return;const k=f.staff.findIndex(x=>!x);if(k<0)return;assign(S,e.id,lot,i,k);done=true});
     if(!done)return{ok:false,msg:`No free station at a ${BIZ[e.fav].name}. Add a station there first.`};e.mood=Math.min(100,e.mood+20);msg=`${first} is thrilled with the move.`}
   if(a==="promo"&&e){e.promoReady=true;e.mood=Math.min(100,e.mood+15);msg=`Open Team and pick a floor for ${first} to manage.`}
   if(a==="critic"){const f=S.lots[it.lot]?.floors[it.i];if(rt&&f&&isBiz(f.type))frt(rt,it.lot,it.i,f).vipPending=true;msg="The critic is on the way. Make sure that floor is staffed!"}
@@ -466,7 +485,7 @@ function genDeal(S){
   const k=pick(kinds),d={id:Math.random().toString(36).slice(2,9),kind:k,company:co,created:now(),expires:now()+18*3600e3};
   if(k==="supply"){const c=Math.round(pm*rnd(6,10)),r=Math.round(c*rnd(1.3,1.7));Object.assign(d,{title:"Supply contract",text:`Pay ${money(c)} now and ${co} pays you back ${money(r)} over the next 10 minutes of play.`,cost:c,ret:r,accept:"SIGN IT"})}
   if(k==="partner"){const c=Math.round(pm*6);Object.assign(d,{title:"Brand partnership",text:`Co-brand with ${co} for ${money(c)}: every business earns +25% for 20 minutes of play.`,cost:c,accept:"PARTNER UP"})}
-  if(k==="acquire"){const types=Object.keys(BIZ).filter(t=>BIZ[t].rank<=S.goalIdx),type=pick(types),c=Math.round(BIZ[type].cost*1.4);
+  if(k==="acquire"){const types=Object.keys(BIZ).filter(t=>BIZ[t].rank<=S.goalIdx&&!BIZ[t].only),type=pick(types),c=Math.round(BIZ[type].cost*1.4);
     Object.assign(d,{title:"Acquisition",text:`${co} is selling a ready-made ${BIZ[type].name} with 2 stations and nice decor for ${money(c)}. It moves into your tower. You'll still need staff.`,cost:c,ftype:type,accept:"BUY IT"})}
   if(k==="star"){const e=mkEmp(Math.min(5,2+Math.floor(S.goalIdx/2)),{lvl:2});Object.assign(d,{title:"Star applicant",text:`${e.name}, ${TRAITS.find(t=>t.id===e.trait).name.toLowerCase()}, SPD ${e.spd} · CHR ${e.chr} · STA ${e.sta}, wants to work for you. No hiring fee. ${money(e.salary)}/min.`,cost:0,emp:e,accept:"HIRE THEM"})}
   if(k==="investor"){const g=Math.round(pm*15);Object.assign(d,{title:"Angel investor",text:`${co}'s founder offers ${money(g)} now for 15% of your revenue over the next 20 minutes of play.`,cost:-g,accept:"TAKE IT"})}
@@ -480,7 +499,7 @@ function applyDeal(S,id){
   if(d.kind==="partner"){S.buffs.push({kind:"rev",mult:1.25,until:T+1200e3,name:d.company+" partnership"});msg="+25% revenue for 20 minutes."}
   if(d.kind==="investor"){S.buffs.push({kind:"rev",mult:.85,until:T+1200e3,name:"Investor cut"});msg=`${money(-d.cost)} in the bank.`}
   if(d.kind==="land"){S.landDiscount=.3;msg="30% off your next property."}
-  if(d.kind==="star"){if(S.emps.length>=staffCap(S))return{ok:false,msg:"Your team is full. Build or upgrade an HR Office."};S.emps.push(d.emp);msg=`${d.emp.name} joined! Give them a station in Team.`}
+  if(d.kind==="star"){if(roomAt(S,S.cur)<=0)return{ok:false,msg:`${lotDef(S.cur).name} is full. Build or upgrade an HR Office there, or switch to another property.`};d.emp.home=S.cur;S.emps.push(d.emp);msg=`${d.emp.name} joined! Give them a station in Team.`}
   if(d.kind==="shares"){const own=S.port[d.t]||0;if(own<d.n)return{ok:false,msg:`You only have ${own} ${d.t}.`};S.port[d.t]=own-d.n;S.cash+=d.n*d.px;msg=`Sold for ${money(d.n*d.px)}.`}
   if(d.kind==="acquire"){let placed=null;
     for(const[lot,L]of Object.entries(S.lots)){const i=L.floors.findIndex(f=>!f.type);if(i>=0){placed=[lot,i];break}}
@@ -531,10 +550,12 @@ function migrate(S){if(!S||S.v!==3)return fresh();const F=fresh();for(const k in
   if(S.fund&&S.fund.cash===undefined){S.fund.cash=S.fund.value||0;S.fund.pos={};delete S.fund.value;delete S.fund.risk}
   S.hr={...F.hr,...S.hr};S.fund={...F.fund,...S.fund};S.mkt={...F.mkt,...S.mkt};
   for(const e of S.emps)if(e.role==="broker"&&!e.strat){e.strat="day";e.sector="tech"}
+  for(const e of S.emps)if(!e.home||!S.lots[e.home])e.home=(e.loc&&S.lots[e.loc.lot]&&e.loc.lot)||(e.at&&S.lots[e.at.lot]&&e.at.lot)||"main";
+  {const seen=new Set();for(const e of S.emps)if(e.role==="hr"){if(seen.has(e.home)){e.role="staff";e.state="idle"}else seen.add(e.home)}}
   for(const[t,q]of Object.entries(S.port||{}))if(q>0&&!S.basis[t]){const st=S.stocks.find(x=>x.t===t);if(st)S.basis[t]=st.p}S.settings={...F.settings,...S.settings};S.clock={...F.clock,...S.clock};if(!S.lots[S.cur])S.cur="main";return S}
 
 G.TT={rnd,ri,pick,clamp,money,BIZ,SUPPORT,KINDS,isBiz,TIERS,LOTS,RANKS,AFFIRM,TRAITS,GEO,MAX_ST,MAX_DECOR,MAX_SUP,
-  mkEmp,fairPay,xpNeed,trait,fresh,bizFloor,supFloor,lotDef,lotMult,lotTier,emp,lotSum,coSum,staffCap,hypeMult,maxFloors,
+  mkEmp,fairPay,xpNeed,trait,fresh,bizFloor,supFloor,lotDef,lotIdx,lotMult,lotTier,emp,lotSum,coSum,staffCap,homeOf,headcount,roomAt,allowedHere,hypeMult,maxFloors,
   floorCost,buildCost,stationCost,decorCost,supCost,hireFee,lotPrice,goal,rank,unlocked,arrivalsPerMin,revenue,present,speedF,svcTime,patience,
   capacityPerMin,registerCap,estPerMin,wagesPerMin,contractPerMin,estIncomePerMin,regTotal,portVal,netWorth,fee,avgRating,
   unassign,assign,setManager,setRole,brokers,brokerCap,brokerSkill,brokerAcc,brokerAccOn,hrDirector,hrActive,RISK,STOCK_DEFS,SECTORS,PERKS,STRATS,deskLvl,hasPerk,fundValue,buyStock,sellStock,stockTimeToEarn,expectedMove,spendPoint,emptyStations,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
