@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tower Tycoon</title>
+<link rel="icon" href="icons/icon32.png">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<div class="app">
+  <div class="hud" id="hud">
+    <div class="stat cash"><b>CASH</b><span id="h-cash">$0</span></div>
+    <div class="stat inc"><b>PROFIT / MIN</b><span id="h-inc">$0</span></div>
+    <div class="stat nw"><b>NET WORTH</b><span id="h-nw">$0</span></div>
+    <div class="stat rate"><b>RATING</b><span id="h-rate">★ 3.0</span></div>
+    <div class="stat team"><b>TEAM</b><span id="h-team">1 / 4</span></div>
+    <div class="stat rank"><b>RANK</b><span id="h-rank">Corner Shop</span></div>
+  </div>
+
+  <div class="main">
+    <div class="towerbox" id="towerbox">
+      <div class="lotbar">
+        <button class="ghost" id="lot-prev" aria-label="Previous property">◀</button>
+        <div class="lotname"><b id="lot-name">Main Street</b><span id="lot-bonus" class="muted"></span></div>
+        <button class="ghost" id="lot-next" aria-label="Next property">▶</button>
+      </div>
+      <div class="towerscroll" id="towerscroll"><canvas id="tower" width="180" height="220" aria-label="Your tower. Tap a floor to manage it."></canvas></div>
+      <div class="towerfoot">
+        <button class="green" id="collect-all">COLLECT $0</button>
+        <button class="cyan" id="add-floor">+ FLOOR</button>
+        <button class="ghost" id="earn-toggle" aria-pressed="true">$ LABELS</button>
+      </div>
+      <div class="hint">Tap a floor to manage it and empty its register.</div>
+    </div>
+
+    <div class="panel">
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" data-tab="floor" aria-selected="true">FLOOR</button>
+        <button role="tab" data-tab="team">TEAM<span class="badge" id="team-badge" hidden></span></button>
+        <button role="tab" data-tab="inbox">INBOX<span class="badge" id="inbox-badge" hidden></span></button>
+        <button role="tab" data-tab="market">MARKET</button>
+        <button role="tab" data-tab="land">LAND</button>
+        <button role="tab" data-tab="money">MONEY</button>
+        <button role="tab" data-tab="records">RANK</button>
+        <button role="tab" data-tab="settings" aria-label="Settings">⚙</button>
+      </div>
+      <div class="body" id="body"></div>
+    </div>
+  </div>
+</div>
+<div id="notes" class="notes" aria-live="polite"></div>
+<div id="modal-root"></div>
+<div id="tut-root"></div>
+<script src="core.js"></script>
+<script src="sfx.js"></script>
+<script src="tower.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

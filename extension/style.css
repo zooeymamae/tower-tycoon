@@ -1,0 +1,41 @@
+/* Tower Tycoon shared styles. One committed look: a night-time arcade screen. */
+[hidden]{display:none!important}
+@font-face{font-family:"Press Start 2P";src:url(fonts/pressstart.woff2) format("woff2");font-display:swap}
+@font-face{font-family:"VT323";src:url(fonts/vt323.woff2) format("woff2");font-display:swap}
+:root{
+  --night:#141428; --panel:#1f1d3a; --panel2:#2a2750; --line:#3d3a6e;
+  --ink:#f2ecd8; --dim:#9a95c2; --gold:#ffcc3d; --green:#5ee08a; --red:#ff5d6c; --cyan:#5ad1ff; --pink:#ff7ad9; --orange:#ff9b4a;
+  --pix:"Press Start 2P", ui-monospace, monospace;
+  --term:"VT323", ui-monospace, "Courier New", monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--night);color:var(--ink);font-family:var(--term);font-size:20px;line-height:1.15;-webkit-font-smoothing:none}
+button{font-family:var(--pix);font-size:10px;line-height:1.6;color:var(--night);background:var(--gold);border:0;padding:9px 10px;cursor:pointer;
+  box-shadow:inset -3px -3px 0 rgba(0,0,0,.35),inset 3px 3px 0 rgba(255,255,255,.35)}
+button:hover{filter:brightness(1.1)}
+button:active{transform:translateY(2px)}
+button:disabled{background:var(--line);color:var(--dim);cursor:not-allowed;filter:none;transform:none}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--cyan);outline-offset:2px}
+button.ghost{background:var(--panel2);color:var(--ink)}
+button.red{background:var(--red)} button.green{background:var(--green)} button.cyan{background:var(--cyan)} button.pink{background:var(--pink)}
+h3{font-family:var(--pix);font-size:10px;margin:2px 0;color:var(--cyan);letter-spacing:.06em;font-weight:normal}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.spread{justify-content:space-between}
+.card{background:var(--panel2);border:3px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.card.sel{border-color:var(--gold)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.muted{color:var(--dim)}
+.pill{font-family:var(--pix);font-size:8px;padding:4px 6px;background:var(--night);color:var(--ink);display:inline-block;white-space:nowrap}
+.swatch{width:14px;height:14px;display:inline-block;border:2px solid #000;vertical-align:-2px}
+.stars{color:var(--gold);letter-spacing:2px}
+.bar{height:8px;background:var(--night);border:2px solid #000;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--green)}
+.up{color:var(--green)} .down{color:var(--red)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--night);border:3px solid var(--gold);
+  font-family:var(--pix);font-size:9px;line-height:1.6;padding:10px;z-index:60;max-width:90%;box-shadow:4px 4px 0 #000}
+.deal{border-color:var(--gold);background:linear-gradient(var(--panel2),var(--panel2)) padding-box}
+.deal .kind{font-family:var(--pix);font-size:8px;color:var(--night);background:var(--gold);align-self:flex-start;padding:4px 6px}
+.deal b.t{font-family:var(--pix);font-size:11px;line-height:1.5;font-weight:normal}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

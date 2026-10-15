@@ -1,0 +1,11 @@
+# Render Blueprint: hosts the web version of Tower Tycoon as a free static site.
+services:
+  - type: web
+    name: tower-tycoon
+    runtime: static
+    buildCommand: echo "No build step needed"
+    staticPublishPath: ./web
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
