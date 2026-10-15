@@ -85,16 +85,23 @@ const trait=e=>TRAITS.find(t=>t.id===e.trait)||TRAITS[0];
 /* ---------- state ---------- */
 function bizFloor(type){return{type,stations:1,decor:0,price:1,staff:[null],manager:null,register:0,rating:3,served:0,reviews:[],abil:0,buff:null}}
 function supFloor(type){return{type,lvl:1}}
-function mkStocks(){return[
+const STOCK_DEFS=[
   {t:"PXLS",n:"Pixel Corp",p:42,vol:.03,drift:.002},{t:"BYTE",n:"Byte Foods",p:18,vol:.022,drift:.001},{t:"CHIP",n:"ChipForge",p:120,vol:.04,drift:.003},
-  {t:"MOON",n:"MoonRocket",p:6,vol:.09,drift:0},{t:"SODA",n:"Fizz Soda",p:55,vol:.012,drift:.0015},{t:"GRID",n:"GridPower",p:30,vol:.028,drift:.0015}]
-  .map(s=>({...s,hist:Array.from({length:30},(_,i)=>s.p*(1+Math.sin(i/4)*.04+rnd(-.03,.03))),trend:rnd(-.01,.01)}))}
+  {t:"MOON",n:"MoonRocket",p:6,vol:.09,drift:0},{t:"SODA",n:"Fizz Soda",p:55,vol:.012,drift:.0015},{t:"GRID",n:"GridPower",p:30,vol:.028,drift:.0015},
+  // penny stocks: cheap, wild, and they can rocket or crash
+  {t:"MEME",n:"Meme Corp",p:.5,vol:.16,drift:-.002,penny:1},{t:"YOLO",n:"Yolo Motors",p:1.2,vol:.14,drift:-.002,penny:1},
+  {t:"ZAPP",n:"Zapp Energy",p:.9,vol:.18,drift:-.003,penny:1},{t:"GOOB",n:"Goober Labs",p:2.4,vol:.12,drift:-.001,penny:1},
+  {t:"FROG",n:"Frog Holdings",p:.3,vol:.2,drift:-.003,penny:1}];
+const mkStock=d=>({...d,base:d.p,hist:Array.from({length:30},(_,i)=>d.p*(1+Math.sin(i/4)*.04+rnd(-.03,.03))),trend:rnd(-.01,.01)});
+function mkStocks(){return STOCK_DEFS.map(mkStock)}
 function fresh(){
   const first=mkEmp(0,{trait:"loyal"});first.fav="cafe";first.spd=4;first.chr=4;first.sta=4;first.salary=Math.round(fairPay(first)*100)/100;
   const S={v:3,cash:500,rep:5,cur:"main",day:1,
     lots:{main:{floors:[bizFloor("cafe"),{type:null}]}},
     emps:[first],applicants:[],appAt:0,inbox:[],deals:[],stocks:mkStocks(),port:{},tips:{},buffs:[],contracts:[],
-    landDiscount:0,goalIdx:0,spent:300,totalEarned:0,bestMin:0,chart:[],log:["Day 1. A tiny café on Main Street, one loyal employee and $500."],
+    landDiscount:0,goalIdx:0,spent:300,
+    fund:{value:0,alloc:.2,risk:"bal",hist:[],log:[],total:0,last:0},
+    hr:{raises:true,points:true,staffing:true,favorites:true,training:true,praise:true,requests:true,promote:false},hrLog:[],totalEarned:0,bestMin:0,chart:[],log:["Day 1. A tiny café on Main Street, one loyal employee and $500."],
     settings:{sound:true,notify:true},tutorialDone:false,lastTick:Date.now(),lastDealGen:0,nextEvent:Date.now()+150e3,clock:{mkt:0,day:0,chart:0},rev:0,writer:"",heartbeat:0};
   assign(S,first.id,"main",0,0);refreshApplicants(S);return S}
 
@@ -142,20 +149,29 @@ const contractPerMin=S=>S.contracts.reduce((a,c)=>a+(c.until>now()?c.perMin:0),0
 function estIncomePerMin(S){let t=0;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type))t+=estPerMin(S,lot,i,f)});return t+contractPerMin(S)}
 const regTotal=S=>Object.values(S.lots).reduce((a,L)=>a+L.floors.reduce((b,f)=>b+(f.register||0),0),0);
 const portVal=S=>Object.entries(S.port).reduce((a,[t,q])=>a+q*S.stocks.find(s=>s.t===t).p,0);
-const netWorth=S=>S.cash+portVal(S)+S.spent*.5+regTotal(S);
+const netWorth=S=>S.cash+portVal(S)+S.spent*.5+regTotal(S)+(S.fund?S.fund.value:0);
 const fee=S=>Math.max(.002,.02-.004*coSum(S,"trade"));
 const avgRating=S=>{let n=0,t=0;for(const L of Object.values(S.lots))for(const f of L.floors)if(isBiz(f.type)){n++;t+=f.rating}return n?t/n:0};
 
 /* ---------- assignments ---------- */
 function unassign(S,id){const e=emp(S,id);if(!e)return;
   if(e.loc){const f=S.lots[e.loc.lot]?.floors[e.loc.i];if(f){if(e.loc.mgr){if(f.manager===id)f.manager=null}else if(f.staff&&f.staff[e.loc.slot]===id)f.staff[e.loc.slot]=null}}
-  if(e.role==="manager"){e.role="staff"}
+  if(e.role!=="staff")e.role="staff";
   e.loc=null;e.state="idle";e.at=null}
 function assign(S,id,lot,i,slot){const e=emp(S,id),f=S.lots[lot].floors[i];if(!e||!isBiz(f.type))return false;
   const cur=f.staff[slot];if(cur&&cur!==id)unassign(S,cur);unassign(S,id);f.staff[slot]=id;e.loc={lot,i,slot};e.state="work";e.role="staff";return true}
 function setManager(S,id,lot,i){const e=emp(S,id),f=S.lots[lot].floors[i];if(!e||!isBiz(f.type))return false;
   if(f.manager)unassign(S,f.manager);unassign(S,id);f.manager=id;e.loc={lot,i,mgr:true};e.state="manage";e.role="manager";e.promoReady=false;
   e.salary=Math.round(Math.max(e.salary,fairPay(e))*1.5*100)/100;return true}
+/* brokers and the HR director are employees who leave the floor for a special job */
+function setRole(S,id,role){const e=emp(S,id);if(!e)return false;unassign(S,id);e.role=role;e.state=role;e.promoReady=false;
+  e.salary=Math.round(Math.max(e.salary,fairPay(e))*(role==="hr"?1.5:1.3)*100)/100;return true}
+const brokers=S=>S.emps.filter(e=>e.role==="broker");
+const brokerCap=S=>coSum(S,"trade");
+const brokerSkill=e=>e.spd*.5+e.chr*.3+Math.min(10,e.lvl)*.4;
+const brokerAcc=(S,e)=>Math.min(.72,.5+.015*brokerSkill(e)+.008*coSum(S,"trade"));
+const hrDirector=S=>S.emps.find(e=>e.role==="hr");
+const hrActive=S=>!!hrDirector(S)&&coSum(S,"office")>0;
 function seatsFree(S,lot,type){const cap=2*lotSum(S,lot,type);const used=S.emps.filter(e=>(e.state==="break"||e.state==="train")&&e.at&&e.at.lot===lot&&S.lots[lot].floors[e.at.i]?.type===type).length;return cap-used}
 function findSupport(S,lot,type){return(S.lots[lot]?.floors||[]).findIndex(f=>f.type===type)}
 
@@ -176,6 +192,7 @@ function tick(S,rt,dt,t=now()){
   simStaff(S,dt,t,ev);
   const C=S.clock;C.mkt+=dt;C.day+=dt;C.chart+=dt;
   if(C.mkt>=20){C.mkt=0;marketTick(S,ev)}
+  C.hr=(C.hr||0)+dt;if(C.hr>=6){C.hr=0;hrTick(S,rt,ev)}
   if(C.day>=120){C.day=0;S.day++;S.rep=Math.max(0,S.rep*.99)}
   if(C.chart>=30){C.chart=0;const pm=perMin(rt,t);S.chart.push({d:S.day,nw:Math.round(netWorth(S)),pm:Math.round(pm-wagesPerMin(S))});if(S.chart.length>120)S.chart.shift();
     if(pm>S.bestMin*1.15&&pm>60&&S.bestMin>0)ev.push({kind:"good",title:"RECORD PACE",text:`You're earning ${money(pm)} a minute. Best ever.`,sfx:"up"});if(pm>S.bestMin)S.bestMin=pm}
@@ -255,15 +272,15 @@ function simStaff(S,dt,t,ev){
     else if(e.state==="break"){e.energy=Math.min(100,e.energy+dt*2*(1+.25*(lotSum(S,e.at.lot,"lounge")-1)));
       if(e.energy>=95){e.state=e.loc?(e.loc.mgr?"manage":"work"):"idle";e.at=null;ev.push({dirty:1})}}
     else if(e.state==="train"){const tl=Math.max(1,lotSum(S,e.at.lot,"training"));e.xp+=dt*.25*(1+.3*(tl-1))*(tr.xp||1);e.energy=Math.max(0,e.energy-dt*.15);
-      if(e.energy<15){e.state=e.loc?"work":"idle";e.at=null;ev.push({kind:"info",title:"TRAINING DONE",text:`${e.name} is worn out and left training.`,dirty:1})}}
+      if(e.energy<15){e.state=e.loc?"work":"idle";e.at=null;ev.push(hrActive(S)&&S.hr.training?{dirty:1}:{kind:"info",title:"TRAINING DONE",text:`${e.name} is worn out and left training.`,dirty:1})}}
     else e.energy=Math.min(100,e.energy+dt*(e.state==="idle"?.8:.2));
     const fair=fairPay(e),payGap=(e.salary/fair-1)*80;
     const atFav=e.loc&&!e.loc.mgr&&S.lots[e.loc.lot]?.floors[e.loc.i]?.type===e.fav;
-    let target=65+payGap+(atFav?12:0)+(e.energy<25?-25:0)+(t-e.praisedAt<300e3?12:0)+(S.cash<0?-30:0)+(e.state==="idle"?-8:0)+(e.role==="manager"?10:0);
+    let target=65+payGap+(atFav?12:0)+(e.energy<25?-25:0)+(t-e.praisedAt<300e3?12:0)+(S.cash<0?-30:0)+(e.state==="idle"?-8:0)+(e.role!=="staff"?10:0)+(hrActive(S)&&e.role!=="hr"?3+hrDirector(S).chr*.5:0);
     target=clamp(target,0,100);if(tr.loyal)target=Math.max(target,40);
     e.mood=clamp(e.mood+(target-e.mood)*dt/90,0,100);
     while(e.xp>=xpNeed(e.lvl)){e.xp-=xpNeed(e.lvl);e.lvl++;e.pts++;
-      ev.push({kind:"good",title:"LEVEL UP!",text:`${e.name} reached level ${e.lvl}. Spend their skill point in Team.`,sfx:"level",dirty:1});log(S,`${e.name} reached level ${e.lvl}.`)}
+      ev.push(hrActive(S)&&S.hr.points?{dirty:1}:{kind:"good",title:"LEVEL UP!",text:`${e.name} reached level ${e.lvl}. Spend their skill point in Team.`,sfx:"level",dirty:1});log(S,`${e.name} reached level ${e.lvl}.`)}
     if(e.mood<25){e.low+=dt;if(e.low>40&&!S.inbox.some(x=>x.kind==="unhappy"&&x.emp===e.id)){S.inbox.unshift(mkUnhappy(S,e));ev.push({kind:"bad",title:`${e.name.toUpperCase()} IS UNHAPPY`,text:"Check your inbox before they walk out.",sfx:"alert",dirty:1})}
       if(e.low>300){unassign(S,e.id);S.emps=S.emps.filter(x=>x!==e);S.inbox=S.inbox.filter(x=>x.emp!==e.id);
         ev.push({kind:"bad",title:"RESIGNATION",text:`${e.name} quit. They felt ${payGap<-10?"underpaid":e.energy<25?"burned out":"ignored"}.`,sfx:"bad",dirty:1});log(S,`${e.name} quit.`)}}
@@ -273,12 +290,67 @@ function simStaff(S,dt,t,ev){
 
 /* ---------- market ---------- */
 function marketTick(S,ev){
-  const tipOdds=Math.min(.7,.08*coSum(S,"trade"));
+  const tipOdds=Math.min(.7,.08*coSum(S,"trade")),moves={};
   S.stocks.forEach(s=>{let mv=s.drift+s.trend+(Math.random()-.5)*2*s.vol;if(S.tips[s.t])mv=Math.abs(mv)*S.tips[s.t]+S.tips[s.t]*s.vol*.4;
-    if(Math.random()<.02)mv+=(Math.random()<.5?-1:1)*s.vol*4;s.p=Math.max(.5,s.p*(1+mv));s.hist.push(s.p);s.hist=s.hist.slice(-40);s.trend=s.trend*.7+rnd(-.012,.012);
-    const own=S.port[s.t]||0;if(own&&Math.abs(mv)>=.06){const v=own*s.p*mv/(1+mv);
+    if(Math.random()<.02)mv+=(Math.random()<.5?-1:1)*s.vol*4;s.event=null;
+    if(s.penny){if(Math.random()<.012){mv=Math.abs(mv)+rnd(1,5);s.event="moon"}else if(Math.random()<.01){mv=-rnd(.45,.8);s.event="bust"}}
+    moves[s.t]=Math.max(-.9,mv)});
+  brokerTick(S,moves,ev);
+  S.stocks.forEach(s=>{const mv=moves[s.t];s.p=Math.max(s.penny?.02:.5,s.p*(1+mv));s.hist.push(s.p);s.hist=s.hist.slice(-40);
+    s.trend=s.trend*.7+rnd(-.012,.012)+(s.penny?clamp(.03*Math.log((s.base||1)/s.p),-.12,.08):0);
+    const own=S.port[s.t]||0;
+    if(s.event==="moon")ev.push({kind:own?"big":"info",title:`${s.t} MOONSHOT ▲${Math.round(mv*100)}%`,text:own?`Your ${own.toLocaleString()} shares are now worth ${money(own*s.p)}! Penny rockets usually fall back, so think about cashing out.`:`${s.n} just exploded. Spikes like this usually fade within a few minutes.`,sfx:own?"fanfare":"alert"});
+    else if(s.event==="bust"&&own)ev.push({kind:"bad",title:`${s.t} CRASHED ▼${Math.round(-mv*100)}%`,text:`Your ${s.t} shares fell to ${money(own*s.p)}. Penny stocks often bounce back, but not always.`,sfx:"bad"});
+    else if(!s.penny&&own&&Math.abs(mv)>=.06){const v=own*s.p*mv/(1+mv);
       ev.push(mv>0?{kind:"big",title:`${s.t} UP ${(mv*100).toFixed(1)}%`,text:`Your ${own} shares gained ${money(v)}.`,sfx:"up"}:{kind:"bad",title:`${s.t} DOWN ${(-mv*100).toFixed(1)}%`,text:`Your ${own} shares lost ${money(-v)}.`,sfx:"bad"})}});
   S.tips={};if(Math.random()<tipOdds){const s=pick(S.stocks);S.tips[s.t]=s.trend>=0?1:-1;ev.push({kind:"info",title:"DESK TIP",text:`Your traders think ${s.t} goes ${s.trend>=0?"UP":"DOWN"} next.`,sfx:"alert"})}
+}
+
+/* ---------- brokers: they invest part of your cash every market update ---------- */
+const RISK={safe:{name:"Safe",desc:"Steady, low-swing stocks only.",ok:s=>!s.penny&&s.vol<=.03},bal:{name:"Balanced",desc:"Any regular stock. No penny stocks.",ok:s=>!s.penny},wild:{name:"Wild",desc:"Penny stocks included. Brokers can't read them well, so it's mostly luck: big wins and big losses.",ok:()=>true}};
+function brokerTick(S,moves,ev){
+  const F=S.fund,bs=brokers(S).slice(0,brokerCap(S));
+  const target=bs.length?F.alloc*(Math.max(0,S.cash)+F.value):0;let diff=target-F.value;
+  if(diff>0)diff=Math.min(diff,Math.max(0,S.cash));S.cash-=diff;F.value+=diff;
+  if(!bs.length||F.value<1){F.last=0;F.hist.push(Math.round(F.value));F.hist=F.hist.slice(-60);return}
+  const uni=S.stocks.filter(RISK[F.risk]?.ok||RISK.bal.ok),slice=F.value/bs.length;let net=0;
+  for(const e of bs){const s=pick(uni),mv=moves[s.t],acc=s.event?.5:s.penny?.5+(brokerAcc(S,e)-.5)*.4:brokerAcc(S,e),good=Math.random()<acc,buy=good?mv>0:mv<=0;
+    e.xp+=.5;e.trades=(e.trades||0)+1;
+    if(!buy){continue}
+    let p=slice*(mv-(s.penny?.02:.003));const com=p>0?p*.15:0;p-=com;net+=p;e.pnl=(e.pnl||0)+p;
+    F.log.unshift({n:e.name.split(" ")[0],t:s.t,r:mv,p:Math.round(p),at:now()})}
+  F.value=Math.max(0,F.value+net);F.last=net;F.total=(F.total||0)+net;F.log=F.log.slice(0,12);F.hist.push(Math.round(F.value));F.hist=F.hist.slice(-60);
+  if(Math.abs(net)>Math.max(1000,F.value*.08))ev.push(net>0?{kind:"big",title:"BROKERS SCORED",text:`Your brokers made ${money(net)} on that trade.`,sfx:"cash"}:{kind:"bad",title:"BROKERS TOOK A HIT",text:`Your broker fund lost ${money(-net)} on that trade.`,sfx:"bad"});
+}
+
+/* ---------- HR director: runs the people side of the company ---------- */
+function hrLog(S,m){S.hrLog.unshift({m,at:now()});S.hrLog=S.hrLog.slice(0,20)}
+function spendPoint(e){const order=["spd","chr","sta"];for(const cap of[8,10])for(const k of order)if(e[k]<cap){e[k]++;return k}return null}
+function emptyStations(S,pred=()=>true){const out=[];for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type)&&pred(f,lot,i))f.staff.forEach((x,k)=>{if(!x)out.push({lot,i,k,f})})});return out}
+function hrTick(S,rt,ev){
+  if(!hrActive(S))return;const P=S.hr,d=hrDirector(S),fn=e=>e.name.split(" ")[0];let acts=0;const t=now();
+  if(P.requests)for(const it of[...S.inbox]){if(!it.emp)continue;const a=it.kind==="unhappy"?"raise":it.kind==="transfer"?"transfer":it.kind==="promo"?(P.promote?"promo":null):null;
+    if(a){const r=resolveInbox(S,rt,it.id,a);if(r.ok){hrLog(S,`Handled a request: ${r.msg}`);acts++}}}
+  for(const e of S.emps){
+    if(P.raises){const fair=fairPay(e);if(e.salary<fair*.97){e.salary=Math.round(fair*1.02*100)/100;hrLog(S,`Raised ${fn(e)} to ${money(e.salary)}/min.`);acts++}}
+    if(P.praise&&e.mood<55&&t-e.praisedAt>300e3){e.praisedAt=t;e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);hrLog(S,`Checked in with ${fn(e)}.`);acts++}
+    if(P.points)while(e.pts>0){const k=spendPoint(e);if(!k)break;e.pts--;hrLog(S,`Trained ${fn(e)}'s ${{spd:"speed",chr:"charm",sta:"stamina"}[k]}.`);acts++}}
+  if(P.promote)for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(!isBiz(f.type)||f.manager)return;
+    const c=S.emps.filter(e=>e.role==="staff"&&e.lvl>=3).sort((a,b)=>(b.promoReady-a.promoReady)||(b.lvl-a.lvl))[0];
+    if(c){setManager(S,c.id,lot,i);hrLog(S,`Promoted ${fn(c)} to manage the ${BIZ[f.type].name}.`);ev.push({kind:"good",title:"NEW MANAGER",text:`Your HR Director promoted ${c.name} to manage the ${BIZ[f.type].name}.`,sfx:"up",dirty:1});acts++}});
+  const idle=()=>S.emps.filter(e=>e.role==="staff"&&!e.loc&&e.state==="idle");
+  if(P.staffing){for(const e of idle()){const es=emptyStations(S),best=es.find(x=>x.f.type===e.fav)||es[0];if(!best)break;
+      assign(S,e.id,best.lot,best.i,best.k);hrLog(S,`Put ${fn(e)} on the ${BIZ[best.f.type].name}${best.f.type===e.fav?" (their favorite)":""}.`);acts++}}
+  if(P.favorites)for(const e of S.emps){if(e.role!=="staff"||!e.loc||e.state!=="work")continue;const cur=S.lots[e.loc.lot]?.floors[e.loc.i];if(!cur||cur.type===e.fav)continue;
+    const spot=emptyStations(S,f=>f.type===e.fav)[0];if(spot){assign(S,e.id,spot.lot,spot.i,spot.k);hrLog(S,`Moved ${fn(e)} to the ${BIZ[e.fav].name} they love.`);acts++}}
+  if(P.staffing&&P.favorites){// swap two people who would each prefer the other's job
+    const ws=S.emps.filter(e=>e.role==="staff"&&e.loc&&e.state==="work");
+    outer:for(const a of ws){const fa=S.lots[a.loc.lot].floors[a.loc.i];if(fa.type===a.fav)continue;
+      for(const b of ws){if(b===a)continue;const fb=S.lots[b.loc.lot].floors[b.loc.i];if(fb.type===a.fav&&fb.type!==b.fav){
+        const la={...a.loc},lb={...b.loc};assign(S,a.id,lb.lot,lb.i,lb.slot);assign(S,b.id,la.lot,la.i,la.slot);hrLog(S,`Swapped ${fn(a)} and ${fn(b)} so ${fn(a)} works where they're happiest.`);acts++;break outer}}}}
+  if(P.training)for(const e of idle()){let spot=null;for(const l of Object.keys(S.lots)){const i=findSupport(S,l,"training");if(i>=0&&seatsFree(S,l,"training")>0&&e.energy>60){spot={lot:l,i};break}}
+    if(!spot)break;e.state="train";e.at=spot;hrLog(S,`Sent ${fn(e)} to training while there's no open station.`);acts++}
+  if(acts){d.xp+=.2*acts;ev.push({dirty:1})}
 }
 
 function refreshApplicants(S){const q=Math.min(4,Math.floor(S.goalIdx/2));S.applicants=Array.from({length:3},()=>mkEmp(ri(0,q)));S.appAt=now()}
@@ -389,12 +461,13 @@ function importCode(str){str=String(str||"").trim();let json;
   let S;try{S=JSON.parse(json)}catch(e){throw new Error("That save code is damaged or incomplete. Copy the whole thing and try again.")}
   if(!S||S.v!==3||!S.lots||!S.emps)throw new Error("That save is from an older version of the game and can't be loaded.");
   S=migrate(S);S.lastTick=Date.now();S.heartbeat=0;return S}
-function migrate(S){if(!S||S.v!==3)return fresh();const F=fresh();for(const k in F)if(S[k]===undefined)S[k]=F[k];S.settings={...F.settings,...S.settings};S.clock={...F.clock,...S.clock};if(!S.lots[S.cur])S.cur="main";return S}
+function migrate(S){if(!S||S.v!==3)return fresh();const F=fresh();for(const k in F)if(S[k]===undefined)S[k]=F[k];
+  for(const d of STOCK_DEFS)if(!S.stocks.some(s=>s.t===d.t))S.stocks.push(mkStock(d));S.hr={...F.hr,...S.hr};S.fund={...F.fund,...S.fund};S.settings={...F.settings,...S.settings};S.clock={...F.clock,...S.clock};if(!S.lots[S.cur])S.cur="main";return S}
 
 G.TT={rnd,ri,pick,clamp,money,BIZ,SUPPORT,KINDS,isBiz,TIERS,LOTS,RANKS,AFFIRM,TRAITS,GEO,MAX_ST,MAX_DECOR,MAX_SUP,
   mkEmp,fairPay,xpNeed,trait,fresh,bizFloor,supFloor,lotDef,lotMult,lotTier,emp,lotSum,coSum,staffCap,hypeMult,maxFloors,
   floorCost,buildCost,stationCost,decorCost,supCost,hireFee,lotPrice,goal,rank,unlocked,arrivalsPerMin,revenue,present,speedF,svcTime,patience,
   capacityPerMin,registerCap,estPerMin,wagesPerMin,contractPerMin,estIncomePerMin,regTotal,portVal,netWorth,fee,avgRating,
-  unassign,assign,setManager,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
+  unassign,assign,setManager,setRole,brokers,brokerCap,brokerSkill,brokerAcc,hrDirector,hrActive,RISK,STOCK_DEFS,spendPoint,emptyStations,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
   genDeal,applyDeal,declineDeal,pruneDeals,timeLeft,offline,applyOffline,log,loadState,saveState,exportCode,importCode,migrate,onStateChange,pushAction,takeActions,onActions,gameOpen,KEY};
 })(typeof globalThis!=="undefined"?globalThis:self);

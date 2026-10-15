@@ -65,9 +65,9 @@ function live(){document.querySelectorAll("[data-live]").forEach(el=>{const f=LI
 /* ---------- helpers ---------- */
 const starsHTML=r=>{const n=Math.round(r);return`<span class="stars-big">${"★".repeat(n)}<span class="off">${"★".repeat(5-n)}</span></span>`};
 const moodWord=m=>m>=70?["HAPPY","var(--green)"]:m>=45?["OKAY","var(--ink)"]:m>=25?["LOW","var(--gold)"]:["UPSET","var(--red)"];
-const shirtOf=e=>{if(e.role==="manager")return"#22223a";const f=e.loc&&S.lots[e.loc.lot]?.floors[e.loc.i];return f&&f.type?T.KINDS[f.type].color:"#6a6a8a"};
+const shirtOf=e=>{if(e.role==="manager")return"#22223a";if(e.role==="broker")return"#2fbf71";if(e.role==="hr")return"#e8e0c8";const f=e.loc&&S.lots[e.loc.lot]?.floors[e.loc.i];return f&&f.type?T.KINDS[f.type].color:"#6a6a8a"};
 const ava=(e,lg)=>`<div class="ava${lg?" lg":""}" aria-hidden="true"><i class="h" style="background:${e.hair}"></i><i class="f" style="background:${e.skin}"></i><i class="e1"></i><i class="e2"></i><i class="s" style="background:${shirtOf(e)}"></i><i class="l"></i></div>`;
-function where(e){if(e.state==="break")return"Resting in the lounge";if(e.state==="train")return"In training";
+function where(e){if(e.role==="broker")return"Investing your money as a broker";if(e.role==="hr")return"Running HR from the HR Office";if(e.state==="break")return"Resting in the lounge";if(e.state==="train")return"In training";
   if(!e.loc)return"Not assigned";const f=S.lots[e.loc.lot]?.floors[e.loc.i];if(!f)return"Not assigned";
   return e.loc.mgr?`Managing the ${T.BIZ[f.type].name} at ${T.lotDef(e.loc.lot).name}`:`${T.BIZ[f.type].name} at ${T.lotDef(e.loc.lot).name}, station ${e.loc.slot+1}`}
 function moodWhy(e){const r=[],fair=T.fairPay(e);
@@ -76,7 +76,8 @@ function moodWhy(e){const r=[],fair=T.fairPay(e);
   if(e.loc&&!e.loc.mgr&&S.lots[e.loc.lot]?.floors[e.loc.i]?.type===e.fav)r.push(`loves working at the ${T.BIZ[e.fav].name}`);
   if(Date.now()-e.praisedAt<300e3)r.push("feels appreciated");
   if(e.state==="idle")r.push("is bored with nothing to do");
-  if(e.role==="manager")r.push("is proud to be a manager");
+  if(e.role!=="staff")r.push(`is proud to be ${e.role==="hr"?"HR Director":"a "+ROLE_NAME[e.role].toLowerCase()}`);
+  if(T.hrActive(S)&&e.role!=="hr")r.push("feels looked after by HR");
   if(S.cash<0)r.push("is worried about the company's money");
   return r}
 function floorStats(lot,i,f){const r=T.frt(rt,lot,i,f),w=r.waits.length?r.waits.reduce((a,b)=>a+b,0)/r.waits.length:0;
@@ -99,12 +100,14 @@ function diagnose(lot,i,f){const s=floorStats(lot,i,f),cap=T.registerCap(S,lot,f
 function setTab(t){tab=t;document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===t));dirty=true;render();$("#body").scrollTop=0}
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{SFX.play("click");setTab(b.dataset.tab)});
 const V={};
-function render(){LIVE={};lk=0;const b=$("#body"),st=b.scrollTop;b.innerHTML=V[tab]();b.scrollTop=st;live();lastSig=sig();dirty=false;hud()}
+function render(){LIVE={};lk=0;const b=$("#body"),st=b.scrollTop;b.innerHTML=V[tab]();
+  if(tab==="team"&&TU.q.trim()){const q=TU.q.trim().toLowerCase();b.querySelectorAll(".erow").forEach(r=>r.hidden=!r.dataset.name.includes(q))}
+  b.scrollTop=st;live();lastSig=sig();dirty=false;hud()}
 function sig(){
   if(tab==="floor"){const f=S.lots[S.cur].floors[sel];return JSON.stringify([S.cur,sel,f,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl]),S.goalIdx].map(x=>x===undefined?0:x)).replace(/"register":[\d.]+,|"rating":[\d.]+,|"served":\d+,/g,"")}
-  if(tab==="team")return JSON.stringify([S.emps.map(e=>[e.id,e.state,e.loc,e.lvl,e.pts,e.salary,e.role,e.promoReady,Math.round(e.mood/10)]),S.applicants.map(a=>a.id),T.staffCap(S)]);
+  if(tab==="team")return JSON.stringify([TU,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl,e.pts,e.salary,e.role,e.promoReady,Math.round(e.mood/10),e.spd,e.chr,e.sta,praiseReady(e)]),S.applicants.map(a=>a.id),T.staffCap(S),S.hr,TU.sub==="hr"?S.hrLog[0]?.at:0,Object.keys(armed)]);
   if(tab==="inbox")return JSON.stringify([S.inbox.map(x=>x.id),S.deals.map(x=>x.id)]);
-  if(tab==="market")return JSON.stringify([S.stocks.map(s=>s.p),S.port,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel]);
+  if(tab==="market")return JSON.stringify([mktSub,S.stocks.map(s=>s.p),S.port,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel,S.fund.alloc,S.fund.risk,S.fund.hist.length,S.fund.log[0]?.at,S.emps.filter(e=>e.role==="broker").map(e=>e.id),T.brokerCap(S)]);
   if(tab==="land")return JSON.stringify([Object.keys(S.lots),S.cur,S.landDiscount]);
   if(tab==="money")return String(S.chart.length)+Math.floor(Date.now()/10000);
   if(tab==="records")return String(S.goalIdx)+Math.floor(Date.now()/10000);
@@ -120,7 +123,7 @@ function hud(){
   const reg=S.lots[S.cur].floors.reduce((a,f)=>a+(T.isBiz(f.type)&&!f.manager?f.register:0),0);$("#collect-all").textContent="COLLECT "+money(reg);$("#collect-all").disabled=reg<1;
   {const L0=S.lots[S.cur],cap=L0.floors.length>=T.maxFloors(S),c=T.floorCost(S,S.cur),b=$("#add-floor");b.textContent=cap?"MAX FLOORS":"+ FLOOR "+money(c);b.disabled=cap||S.cash<c;b.title=cap?"Rank up to add more floors":"Add an empty floor to this tower"}
   const ib=$("#inbox-badge"),n=S.inbox.length+S.deals.length;ib.hidden=!n;ib.textContent=n;
-  const tb=$("#team-badge"),m=S.emps.filter(e=>e.pts>0||e.mood<30||e.promoReady).length;tb.hidden=!m;tb.textContent=m;
+  const tb=$("#team-badge"),m=S.emps.filter(e=>e.pts>0||e.mood<30||(e.promoReady&&e.role==="staff")).length;tb.hidden=!m;tb.textContent=m;
 }
 
 /* ===== FLOOR ===== */
@@ -191,7 +194,7 @@ function vBiz(lot,i,f){
   h+=`<div class="sec"><h3>RECENT REVIEWS</h3><div class="reviews">${f.reviews.length?f.reviews.map(r=>`<div class="review"><span class="s">${"★".repeat(r.s)}${"☆".repeat(5-r.s)}</span><span>"${esc(r.t)}" <span class="n">${esc(r.n)}</span></span></div>`).join(""):`<div class="muted">No reviews yet. They'll come in as you serve customers.</div>`}</div></div>`;
   h+=`<div class="danger"><button class="${armed.demo?"red":"ghost"}" data-act="demolish">${armed.demo?"TAP AGAIN TO CLOSE THIS BUSINESS":"CLOSE THIS BUSINESS"}</button></div>`;
   return h}
-function assignSelect(lot,i,k){const opts=S.emps.filter(e=>e.role!=="manager").sort((a,b)=>(a.loc?1:0)-(b.loc?1:0));
+function assignSelect(lot,i,k){const opts=S.emps.filter(e=>e.role==="staff").sort((a,b)=>(a.loc?1:0)-(b.loc?1:0));
   if(!opts.length)return`<button data-act="tab" data-t="team">HIRE SOMEONE</button>`;
   return`<select data-act="assign" data-k="${k}"><option value="">Assign…</option>${opts.map(e=>`<option value="${e.id}">${esc(e.name)} · SPD ${e.spd} CHR ${e.chr}${e.fav===S.lots[lot].floors[i].type?" ♥":""} · ${e.loc?"moves from "+(e.loc.mgr?"manager":T.BIZ[S.lots[e.loc.lot].floors[e.loc.i].type].name):"free"}</option>`).join("")}</select>`}
 function vSupport(lot,i,f){const B=T.SUPPORT[f.type],c=f.lvl<T.MAX_SUP?T.supCost(f,lot):0;
@@ -207,44 +210,110 @@ function vSupport(lot,i,f){const B=T.SUPPORT[f.type],c=f.lvl<T.MAX_SUP?T.supCost
   return h}
 
 /* ===== TEAM ===== */
-V.team=()=>{
-  const cap=T.staffCap(S),sorted=[...S.emps].sort((a,b)=>((b.pts>0)+(b.mood<30)*2+(b.promoReady?1:0))-((a.pts>0)+(a.mood<30)*2+(a.promoReady?1:0)));
-  let h=`<div class="head"><h2>YOUR TEAM ${S.emps.length}/${cap}</h2><span class="pill">WAGES ${money(T.wagesPerMin(S))}/MIN</span></div>
-  <div class="muted">Your people are what make the business. Happy, rested staff work faster and customers can tell. Pay fairly, praise often, give them work they love.</div>`;
-  for(const e of sorted){const mw=moodWord(e.mood),why=moodWhy(e),tr=T.trait(e),fair=T.fairPay(e);
-    const hasTrain=Object.keys(S.lots).some(l=>T.findSupport(S,l,"training")>=0&&T.seatsFree(S,l,"training")>0);
-    const loungeLot=e.loc&&T.findSupport(S,e.loc.lot,"lounge")>=0;
-    h+=`<div class="emp ${e.mood<30?"alert":e.pts>0?"pts":""}">${ava(e,true)}<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
-      <div class="top"><span class="name">${esc(e.name)}</span><span class="meta">Level ${e.lvl}${e.role==="manager"?" · MANAGER":""}</span></div>
-      <div class="row"><span class="chip trait" title="${esc(tr.desc)}">${tr.name.toUpperCase()}</span><span class="chip fav">♥ ${T.BIZ[e.fav].name.toUpperCase()}</span><span class="muted">${esc(e.bio)}</span></div>
-      <div class="meta">${L(()=>where(e))}</div>
-      <div class="stats">
-        <span>Speed</span><div class="bar"><i style="width:${e.spd*10}%;background:var(--cyan)"></i></div><b>${e.spd}</b>
-        <span>Charm</span><div class="bar"><i style="width:${e.chr*10}%;background:var(--pink)"></i></div><b>${e.chr}</b>
-        <span>Stamina</span><div class="bar"><i style="width:${e.sta*10}%;background:var(--green)"></i></div><b>${e.sta}</b>
-        <span>XP</span>${Wb(()=>e.xp/T.xpNeed(e.lvl)*100,"var(--gold)")}<b>${L(()=>Math.floor(e.xp)+"/"+T.xpNeed(e.lvl))}</b>
-        <span>Energy</span>${Wb(()=>e.energy,"energy")}<b>${L(()=>Math.round(e.energy)+"%")}</b>
-        <span>Mood</span>${Wb(()=>e.mood,"var(--pink)")}<b class="face" style="color:${mw[1]}">${mw[0]}</b></div>
-      <div class="meta">${why.length?esc(first(e))+" "+why.join(", ")+".":""} Paid ${money(e.salary)}/min${e.salary<fair*.95?` <span class="down">(fair is ${money(fair)})</span>`:""} · ${e.served.toLocaleString()} customers served.</div>
-      ${e.pts>0?`<div class="row"><b class="up">${e.pts} SKILL POINT${e.pts>1?"S":""} TO SPEND:</b>${["spd","chr","sta"].map(s=>`<button class="green" data-act="point" data-id="${e.id}" data-s="${s}" ${e[s]>=10?"disabled":""}>+${{spd:"SPEED",chr:"CHARM",sta:"STAMINA"}[s]}</button>`).join("")}</div>`:""}
-      ${e.promoReady&&e.role!=="manager"?`<div class="up">${esc(first(e))} is ready to manage. Pick a floor:</div>${promoSelect(e)}`:""}
-      <div class="row">
-        <button class="ghost" data-act="praise" data-id="${e.id}" ${Date.now()-e.praisedAt<300e3?"disabled":""}>${Date.now()-e.praisedAt<300e3?"PRAISED ♥":"PRAISE"}</button>
-        <button class="ghost" data-act="raise" data-id="${e.id}">RAISE +15%</button>
-        ${e.state==="train"?`<button class="ghost" data-act="stoptrain" data-id="${e.id}">STOP TRAINING</button>`:`<button class="ghost" data-act="train" data-id="${e.id}" ${hasTrain?"":"disabled title='Build a Training Room first'"}>TRAIN</button>`}
-        ${e.state==="work"&&loungeLot?`<button class="ghost" data-act="rest" data-id="${e.id}">SEND TO REST</button>`:""}
-        ${e.lvl>=3&&e.role!=="manager"&&!e.promoReady?`<button class="ghost" data-act="promoready" data-id="${e.id}">PROMOTE…</button>`:""}
-        <button class="${armed["fire"+e.id]?"red":"ghost"}" data-act="fire" data-id="${e.id}">${armed["fire"+e.id]?"REALLY LET GO?":"LET GO"}</button></div>
-    </div></div>`}
-  const full=S.emps.length>=cap,left=Math.max(0,180-Math.floor((Date.now()-S.appAt)/1000));
-  h+=`<div class="sec"><h3>APPLICANTS</h3><div class="row spread"><span class="muted">New applicants in ${L(()=>{const l=Math.max(0,180-Math.floor((Date.now()-S.appAt)/1000));return Math.floor(l/60)+":"+String(l%60).padStart(2,"0")})}</span>
+const TU={sub:"staff",filter:"all",sort:"attention",q:"",open:null,limit:40};
+const ROLE_NAME={manager:"Manager",broker:"Broker",hr:"HR Director"};
+function shortWhere(e){if(e.role==="broker")return"Broker";if(e.role==="hr")return"HR Director";
+  if(e.state==="break")return"Resting";if(e.state==="train")return"Training";if(!e.loc)return"No job";
+  const f=S.lots[e.loc.lot]?.floors[e.loc.i];if(!f)return"No job";const lot=T.lotDef(e.loc.lot).name.split(" ")[0];
+  return e.loc.mgr?`Manager · ${T.BIZ[f.type].name} · ${lot}`:`${T.BIZ[f.type].name} · ${lot} F${e.loc.i+1}`}
+const underpaid=e=>e.salary<T.fairPay(e)*.95;
+const praiseReady=e=>Date.now()-e.praisedAt>=300e3;
+const atFav=e=>e.loc&&!e.loc.mgr&&S.lots[e.loc.lot]?.floors[e.loc.i]?.type===e.fav;
+const needs=e=>(e.mood<30?4:0)+(e.pts>0?2:0)+(underpaid(e)?2:0)+(e.promoReady&&e.role==="staff"?1:0)+(e.state==="idle"&&e.role==="staff"?1:0);
+const FILTERS=[["all","All"],["attention","Needs you"],["idle","No job"],["working","Working"],["away","Resting / training"],["leaders","Managers & roles"]];
+function passFilter(e){switch(TU.filter){case"attention":return needs(e)>0;case"idle":return e.role==="staff"&&e.state==="idle";case"working":return e.state==="work";
+  case"away":return e.state==="break"||e.state==="train";case"leaders":return e.role!=="staff";default:return true}}
+const SORTS={attention:(a,b)=>needs(b)-needs(a)||b.lvl-a.lvl,level:(a,b)=>b.lvl-a.lvl,mood:(a,b)=>a.mood-b.mood,speed:(a,b)=>b.spd-a.spd,charm:(a,b)=>b.chr-a.chr,name:(a,b)=>a.name.localeCompare(b.name),pay:(a,b)=>b.salary-a.salary};
+function teamSubtabs(){const hrOn=T.hrActive(S);return`<div class="subtabs">${[["staff",`STAFF ${S.emps.length}/${T.staffCap(S)}`],["hire",`HIRE (${S.applicants.length})`],["hr",`HR DIRECTOR${hrOn?" ✓":""}`]].map(([k,l])=>`<button data-act="teamsub" data-k="${k}" aria-pressed="${TU.sub===k}">${l}</button>`).join("")}</div>`}
+V.team=()=>teamSubtabs()+(TU.sub==="hire"?vHire():TU.sub==="hr"?vHR():vStaff());
+function vStaff(){
+  const E=S.emps,c={work:0,rest:0,train:0,idle:0,upset:0,pts:0,under:0};
+  E.forEach(e=>{if(e.state==="work")c.work++;if(e.state==="break")c.rest++;if(e.state==="train")c.train++;if(e.role==="staff"&&e.state==="idle")c.idle++;if(e.mood<30)c.upset++;if(e.pts>0)c.pts+=e.pts;if(underpaid(e))c.under++});
+  const raiseCost=E.filter(underpaid).reduce((a,e)=>a+(T.fairPay(e)*1.02-e.salary),0),praiseN=E.filter(e=>praiseReady(e)&&e.mood<80).length;
+  const empty=T.emptyStations(S).length;
+  let h=`<div class="tstats">
+    <button data-act="tfilter" data-k="working"><b>${c.work}</b><span>working</span></button>
+    <button data-act="tfilter" data-k="away"><b>${c.rest+c.train}</b><span>resting/training</span></button>
+    <button data-act="tfilter" data-k="idle" class="${c.idle?"warn":""}"><b>${c.idle}</b><span>no job</span></button>
+    <button data-act="tfilter" data-k="attention" class="${c.upset?"bad":""}"><b>${c.upset}</b><span>upset</span></button>
+    <button data-act="tfilter" data-k="attention" class="${c.pts?"gold":""}"><b>${c.pts}</b><span>skill points</span></button>
+    <div><b>${money(T.wagesPerMin(S))}</b><span>wages / min</span></div></div>`;
+  if(T.hrActive(S))h+=`<div class="why good"><div><b>YOUR HR DIRECTOR IS ON IT</b>${esc(T.hrDirector(S).name)} handles ${Object.entries(S.hr).filter(([k,v])=>v).length} of 8 people jobs for you. <a href="#" data-act="teamsub" data-k="hr">See what they're doing</a></div></div>`;
+  h+=`<div class="bulk">${c.under?`<button class="green" data-act="payfair">PAY ${c.under} FAIRLY (+${money(raiseCost)}/MIN)</button>`:""}
+    ${praiseN?`<button class="pink" data-act="praiseall">PRAISE ${praiseN}</button>`:""}
+    ${c.pts?`<button class="green" data-act="spendall">SPEND ${c.pts} POINT${c.pts>1?"S":""}</button>`:""}
+    ${c.idle&&empty?`<button class="cyan" data-act="fillall">FILL ${Math.min(c.idle,empty)} EMPTY STATION${Math.min(c.idle,empty)>1?"S":""}</button>`:""}</div>
+  <div class="tcontrols"><div class="chips">${FILTERS.map(([k,l])=>`<button data-act="tfilter" data-k="${k}" aria-pressed="${TU.filter===k}">${l}</button>`).join("")}</div>
+    <div class="row"><input id="tsearch" type="search" placeholder="Find by name" value="${esc(TU.q)}" autocomplete="off">
+    <label class="muted" for="tsort">Sort</label><select id="tsort" data-act="tsort">${[["attention","Needs attention"],["level","Level"],["mood","Lowest mood"],["speed","Speed"],["charm","Charm"],["pay","Pay"],["name","Name"]].map(([k,l])=>`<option value="${k}" ${TU.sort===k?"selected":""}>${l}</option>`).join("")}</select></div></div>`;
+  const list=E.filter(passFilter).sort(SORTS[TU.sort]||SORTS.attention);
+  if(!list.length)h+=`<div class="muted">Nobody matches this filter.</div>`;
+  h+=`<div class="elist">`;
+  list.slice(0,TU.limit).forEach(e=>{const mw=moodWord(e.mood),open=TU.open===e.id;
+    h+=`<div class="erow${open?" open":""}${e.mood<30?" alert":""}" data-name="${esc(e.name.toLowerCase())}">
+      <button class="ehead" data-act="openemp" data-id="${e.id}" aria-expanded="${open}">${ava(e)}
+        <span class="ename"><b>${esc(e.name)}</b><small>${esc(shortWhere(e))}</small></span>
+        <span class="elv">Lv${e.lvl}</span>
+        <span class="emini"><span class="bar"><i style="width:${e.energy}%;background:${e.energy<25?"var(--red)":e.energy<50?"var(--gold)":"var(--green)"}"></i></span><span class="bar"><i style="width:${e.mood}%;background:var(--pink)"></i></span></span>
+        <span class="eflags">${e.pts?`<i class="f gold" title="Skill points to spend">+${e.pts}</i>`:""}${underpaid(e)?`<i class="f red" title="Underpaid">$</i>`:""}${e.mood<30?`<i class="f red" title="Upset">!</i>`:""}${atFav(e)?`<i class="f pink" title="Working where they love">♥</i>`:""}${e.role!=="staff"?`<i class="f cyan" title="${ROLE_NAME[e.role]}">${e.role==="manager"?"M":e.role==="broker"?"B":"HR"}</i>`:""}<span class="mw" style="color:${mw[1]}">${mw[0]}</span></span>
+        <span class="chev">${open?"▲":"▼"}</span></button>
+      ${open?empDetail(e):""}</div>`});
+  h+=`</div>`;
+  if(list.length>TU.limit)h+=`<button class="ghost" data-act="tmore">SHOW ${Math.min(40,list.length-TU.limit)} MORE (${list.length-TU.limit} hidden)</button>`;
+  return h}
+function empDetail(e){const why=moodWhy(e),tr=T.trait(e),fair=T.fairPay(e);
+  const hasTrain=Object.keys(S.lots).some(l=>T.findSupport(S,l,"training")>=0&&T.seatsFree(S,l,"training")>0);
+  const loungeLot=e.loc&&T.findSupport(S,e.loc.lot,"lounge")>=0,bSeats=T.brokerCap(S)-T.brokers(S).length,office=T.coSum(S,"office")>0;
+  return`<div class="edetail">
+    <div class="row"><span class="chip trait" title="${esc(tr.desc)}">${tr.name.toUpperCase()}</span><span class="chip fav">♥ ${T.BIZ[e.fav].name.toUpperCase()}</span><span class="muted">${esc(tr.desc)} ${esc(e.bio)}</span></div>
+    <div class="muted">${L(()=>where(e))}</div>
+    <div class="stats">
+      <span>Speed</span><div class="bar"><i style="width:${e.spd*10}%;background:var(--cyan)"></i></div><b>${e.spd}</b>
+      <span>Charm</span><div class="bar"><i style="width:${e.chr*10}%;background:var(--pink)"></i></div><b>${e.chr}</b>
+      <span>Stamina</span><div class="bar"><i style="width:${e.sta*10}%;background:var(--green)"></i></div><b>${e.sta}</b>
+      <span>XP</span>${Wb(()=>e.xp/T.xpNeed(e.lvl)*100,"var(--gold)")}<b>${L(()=>Math.floor(e.xp)+"/"+T.xpNeed(e.lvl))}</b>
+      <span>Energy</span>${Wb(()=>e.energy,"energy")}<b>${L(()=>Math.round(e.energy)+"%")}</b>
+      <span>Mood</span>${Wb(()=>e.mood,"var(--pink)")}<b>${L(()=>Math.round(e.mood))}</b></div>
+    <div class="muted">${why.length?esc(first(e))+" "+why.join(", ")+". ":""}Paid ${money(e.salary)}/min${underpaid(e)?` <span class="down">(fair is ${money(fair)})</span>`:""}${e.role==="broker"?` · ${e.trades||0} trades, ${money(e.pnl||0)} profit`:` · ${e.served.toLocaleString()} customers served`}.</div>
+    ${e.pts>0?`<div class="row"><b class="up">${e.pts} POINT${e.pts>1?"S":""}:</b>${["spd","chr","sta"].map(s=>`<button class="green" data-act="point" data-id="${e.id}" data-s="${s}" ${e[s]>=10?"disabled":""}>+${{spd:"SPEED",chr:"CHARM",sta:"STAMINA"}[s]}</button>`).join("")}</div>`:""}
+    ${(e.promoReady||armed["promo"+e.id])&&e.role!=="manager"?`<div class="row"><span class="up">Pick a floor for ${esc(first(e))} to manage:</span>${promoSelect(e)}</div>`:""}
+    ${e.role==="staff"&&!e.loc?`<div class="row"><span class="muted">Give ${esc(first(e))} a station:</span>${stationSelect(e)}</div>`:""}
+    <div class="row">
+      <button class="ghost" data-act="praise" data-id="${e.id}" ${praiseReady(e)?"":"disabled"}>${praiseReady(e)?"PRAISE":"PRAISED ♥"}</button>
+      <button class="ghost" data-act="raise" data-id="${e.id}">RAISE +15%</button>
+      ${e.state==="train"?`<button class="ghost" data-act="stoptrain" data-id="${e.id}">STOP TRAINING</button>`:e.role==="staff"?`<button class="ghost" data-act="train" data-id="${e.id}" ${hasTrain?"":"disabled title='Build a Training Room first'"}>TRAIN</button>`:""}
+      ${e.state==="work"&&loungeLot?`<button class="ghost" data-act="rest" data-id="${e.id}">SEND TO REST</button>`:""}
+      ${e.loc&&e.role==="staff"?`<button class="ghost" data-act="unassign" data-id="${e.id}">TAKE OFF STATION</button>`:""}
+      ${e.lvl>=3&&e.role==="staff"&&!e.promoReady?`<button class="ghost" data-act="promoready" data-id="${e.id}">MAKE MANAGER…</button>`:""}
+      ${e.role!=="broker"&&bSeats>0?`<button class="ghost" data-act="mkbroker" data-id="${e.id}">MAKE BROKER</button>`:""}
+      ${e.role!=="hr"&&office&&!T.hrDirector(S)?`<button class="ghost" data-act="mkhr" data-id="${e.id}">MAKE HR DIRECTOR</button>`:""}
+      ${e.role==="broker"||e.role==="hr"||e.role==="manager"?`<button class="ghost" data-act="unassign" data-id="${e.id}">STEP DOWN</button>`:""}
+      <button class="${armed["fire"+e.id]?"red":"ghost"}" data-act="fire" data-id="${e.id}">${armed["fire"+e.id]?"REALLY LET GO?":"LET GO"}</button></div></div>`}
+function stationSelect(e){const es=T.emptyStations(S);if(!es.length)return`<span class="muted">No empty stations. Add one on a business floor.</span>`;
+  es.sort((a,b)=>(b.f.type===e.fav)-(a.f.type===e.fav));
+  return`<select data-act="placeemp" data-id="${e.id}"><option value="">Choose a station…</option>${es.map(x=>`<option value="${x.lot}:${x.i}:${x.k}">${x.f.type===e.fav?"♥ ":""}${T.BIZ[x.f.type].name} · ${T.lotDef(x.lot).name} F${x.i+1} · station ${x.k+1}</option>`).join("")}</select>`}
+function vHire(){const cap=T.staffCap(S),full=S.emps.length>=cap;
+  let h=`<div class="row spread"><span class="muted">New applicants in ${L(()=>{const l=Math.max(0,180-Math.floor((Date.now()-S.appAt)/1000));return Math.floor(l/60)+":"+String(l%60).padStart(2,"0")})}</span>
     <button class="ghost" data-act="postad" ${cost(100)}>POST A JOB AD $100</button></div>${full?`<div class="why warn"><div><b>YOUR TEAM IS FULL</b>Each HR Office level lets you employ 3 more people. Build one on an empty floor, or upgrade one you already have.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`:""}<div class="grid2">`;
   for(const a of S.applicants){const tr=T.trait(a),fee=T.hireFee(a);
     h+=`<div class="card"><div class="row">${ava(a)}<div><b>${esc(a.name)}</b><div class="muted">${esc(a.bio)}</div></div></div>
     <div class="row"><span class="chip trait" title="${esc(tr.desc)}">${tr.name.toUpperCase()}</span><span class="chip fav">♥ ${T.BIZ[a.fav].name.toUpperCase()}</span></div>
     <div class="muted">${esc(tr.desc)}</div><div>SPD ${a.spd} · CHR ${a.chr} · STA ${a.sta}</div><div class="muted">${money(a.salary)}/min · hiring fee ${money(fee)}</div>
     <button class="green" data-act="hire" data-id="${a.id}" ${full?"disabled":cost(fee)}>HIRE ${esc(first(a).toUpperCase())}</button></div>`}
-  return h+`</div></div>`};
+  return h+`</div>`}
+const HR_DUTIES=[["requests","Answer staff requests","Gives raises to unhappy staff and approves transfers to jobs they love."],["raises","Keep pay fair","Raises anyone paid below the fair wage."],["praise","Check in on morale","Praises anyone whose mood dips below 55."],
+  ["points","Spend skill points","Speed first, then charm, then stamina."],["staffing","Fill empty stations","Puts people without a job on open stations, favorites first."],["favorites","Match people to jobs they love","Moves and swaps staff so they work at their favorite business."],
+  ["training","Train people without a job","Sends anyone without a station to a free Training Room seat."],["promote","Promote managers","Makes your best level 3+ worker the manager of any floor without one."]];
+function vHR(){const d=T.hrDirector(S),office=T.coSum(S,"office")>0;
+  let h=`<div class="muted">An HR Director looks after your people so you don't have to. They work from your HR Office and lift everyone's mood a little (more if they're charming).</div>`;
+  if(!office)return h+`<div class="why warn"><div><b>YOU NEED AN HR OFFICE FIRST</b>Build one on any floor. It also lets you employ 3 more people per level.<div class="row" style="margin-top:6px"><button data-act="gohr">BUILD AN HR OFFICE</button></div></div></div>`;
+  if(!d){const c=S.emps.filter(e=>e.role==="staff"||e.role==="manager").sort((a,b)=>b.chr-a.chr);
+    return h+`<div class="why warn"><div><b>NO HR DIRECTOR YET</b>Choose someone to lead HR. They leave their current job, and their pay goes up 50%. Charm makes them better at lifting the team's mood.</div></div>
+    ${c.length?`<select data-act="mkhrsel"><option value="">Appoint an HR Director…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · CHR ${e.chr} · Lv${e.lvl} · ${esc(shortWhere(e))}</option>`).join("")}</select>`:`<div class="muted">Hire someone first.</div>`}`}
+  h+=`<div class="slot">${ava(d)}<div class="who"><b>${esc(d.name)} <span class="muted">HR Director</span></b><div class="muted">Charm ${d.chr} · everyone's mood +${Math.round(3+d.chr*.5)} · ${money(d.salary)}/min</div></div><div class="acts"><button class="ghost" data-act="unassign" data-id="${d.id}">STEP DOWN</button></div></div>
+  <div class="sec"><h3>WHAT ${esc(first(d).toUpperCase())} HANDLES</h3>${HR_DUTIES.map(([k,l,desc])=>`<div class="toggle"><span><b class="tl">${l}</b><br><span class="muted">${desc}</span></span><button data-act="hrtoggle" data-k="${k}" class="${S.hr[k]?"green":"ghost"}" aria-pressed="${!!S.hr[k]}">${S.hr[k]?"ON":"OFF"}</button></div>`).join("")}</div>
+  <div class="sec"><h3>RECENT HR ACTIVITY</h3><div class="log">${S.hrLog.length?S.hrLog.slice(0,12).map(x=>`<div>${esc(x.m)}</div>`).join(""):`<div class="muted">Nothing needed yet. ${esc(first(d))} checks in every few seconds.</div>`}</div></div>`;
+  return h}
 function promoSelect(e){const fl=[];for(const[lot,L0]of Object.entries(S.lots))L0.floors.forEach((f,i)=>{if(T.isBiz(f.type))fl.push({lot,i,f})});
   return`<select data-act="promote" data-id="${e.id}"><option value="">Manage which floor?</option>${fl.map(x=>`<option value="${x.lot}:${x.i}">${T.BIZ[x.f.type].name} · ${T.lotDef(x.lot).name}${x.f.manager?" (replace "+esc(T.emp(S,x.f.manager)?.name||"")+")":""}</option>`).join("")}</select>`}
 
@@ -262,18 +331,38 @@ V.inbox=()=>{
   return h+`</div>`};
 
 /* ===== MARKET ===== */
-function spark(h,w=300,ht=80){const mn=Math.min(...h),mx=Math.max(...h),pad=5,pts=h.map((v,i)=>[(i/(h.length-1)*(w-pad*2)+pad),(ht-pad-(v-mn)/((mx-mn)||1)*(ht-pad*2))]),col=h[h.length-1]>=h[0]?"#5ee08a":"#ff5d6c",last=pts[pts.length-1];
+let mktSub="stocks";
+const fmtP=p=>"$"+(p>=1?p.toFixed(2):p.toFixed(3));
+function spark(h,w=300,ht=80){if(h.length<2)h=[h[0]||0,h[0]||0];const mn=Math.min(...h),mx=Math.max(...h),pad=5,pts=h.map((v,i)=>[(i/(h.length-1)*(w-pad*2)+pad),(ht-pad-(v-mn)/((mx-mn)||1)*(ht-pad*2))]),col=h[h.length-1]>=h[0]?"#5ee08a":"#ff5d6c",last=pts[pts.length-1];
   return`<svg viewBox="0 0 ${w} ${ht}" width="100%" height="${ht}" preserveAspectRatio="none" style="display:block;background:#141428">${[.25,.5,.75].map(f=>`<line x1="0" x2="${w}" y1="${ht*f}" y2="${ht*f}" stroke="#2a2750"/>`).join("")}
   <polygon points="${pad},${ht} ${pts.map(p=>p.join(",")).join(" ")} ${w-pad},${ht}" fill="${col}" fill-opacity=".12"/><polyline points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="${col}" stroke-width="2"/><rect x="${last[0]-3}" y="${last[1]-3}" width="6" height="6" fill="${col}"/></svg>`}
-V.market=()=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,tip=S.tips[st.t],fe=T.fee(S),maxBuy=Math.floor(S.cash/(st.p*(1+fe)));
+V.market=()=>{const n=T.brokers(S).length;return`<div class="subtabs"><button data-act="mktsub" data-k="stocks" aria-pressed="${mktSub==="stocks"}">STOCKS</button><button data-act="mktsub" data-k="brokers" aria-pressed="${mktSub==="brokers"}">BROKERS ${n}/${T.brokerCap(S)}</button></div>`+(mktSub==="brokers"?vBrokers():vStocks())};
+function vStocks(){const st=S.stocks.find(s=>s.t===mktSel)||S.stocks[0],own=S.port[st.t]||0,tip=S.tips[st.t],fe=T.fee(S),maxBuy=Math.floor(Math.max(0,S.cash)/(st.p*(1+fe)));
   let h=`<div class="head"><h2>STOCK MARKET</h2><span class="muted">Prices update every 20 seconds</span></div><div class="tbl"><table><tr><th>TICKER</th><th>PRICE</th><th>LAST</th><th>OWN</th><th>VALUE</th><th>TIP</th></tr>`;
   S.stocks.forEach(s=>{const c=(s.p/s.hist[s.hist.length-2]-1)*100,t=S.tips[s.t],q=S.port[s.t]||0;
-    h+=`<tr data-act="stock" data-t="${s.t}" tabindex="0" style="cursor:pointer;${s.t===mktSel?"background:#2a2750":""}"><td><b>${s.t}</b></td><td>$${s.p.toFixed(2)}</td><td class="${c>=0?"up":"down"}">${c>=0?"▲":"▼"}${Math.abs(c).toFixed(1)}%</td><td>${q}</td><td>${q?money(q*s.p):"–"}</td><td>${t?(t>0?'<span class="up">▲ HOT</span>':'<span class="down">▼ COLD</span>'):"–"}</td></tr>`});
-  h+=`</table></div><div class="card"><div class="row spread"><b>${st.n} (${st.t})</b><span>$${st.p.toFixed(2)}</span></div>${spark(st.hist)}
-   <div class="muted">You own ${own} (${money(own*st.p)}) · fee ${(fe*100).toFixed(1)}%</div>${tip?`<div class="${tip>0?"up":"down"}">Your desk thinks ${st.t} will ${tip>0?"rise":"drop"} next.</div>`:""}
-   <div class="row">${[1,10,100,1000].map(q=>`<button class="green" data-act="buy" data-q="${q}" ${maxBuy<q?"disabled":""}>BUY ${q}</button>`).join("")}<button class="green" data-act="buy" data-q="max" ${maxBuy<1?"disabled":""}>MAX</button></div>
-   <div class="row">${[1,10,100,1000].map(q=>`<button class="red" data-act="sell" data-q="${q}" ${own<q?"disabled":""}>SELL ${q}</button>`).join("")}<button class="red" data-act="sell" data-q="all" ${!own?"disabled":""}>ALL</button></div></div>
-   <div class="muted">Portfolio ${money(T.portVal(S))}. A Trading Desk gives you tips about the next move.</div>`;return h};
+    h+=`<tr data-act="stock" data-t="${s.t}" tabindex="0" style="cursor:pointer;${s.t===st.t?"background:#2a2750":""}"><td><b>${s.t}</b>${s.penny?` <span class="penny">PENNY</span>`:""}</td><td>${fmtP(s.p)}</td><td class="${c>=0?"up":"down"}">${c>=0?"▲":"▼"}${Math.abs(c)>=100?Math.round(Math.abs(c)):Math.abs(c).toFixed(1)}%</td><td>${q.toLocaleString()}</td><td>${q?money(q*s.p):"–"}</td><td>${t?(t>0?'<span class="up">▲ HOT</span>':'<span class="down">▼ COLD</span>'):"–"}</td></tr>`});
+  const pc=[.1,.25,.5];
+  h+=`</table></div><div class="card"><div class="row spread"><b>${st.n} (${st.t})${st.penny?` <span class="penny">PENNY</span>`:""}</b><span>${fmtP(st.p)}</span></div>${spark(st.hist)}
+   ${st.penny?`<div class="why warn"><div><b>WILD CARD</b>Penny stocks swing hard. Now and then one rockets 2–6×, then usually slides back within a few minutes. Some crash. Cash out a moonshot fast.</div></div>`:""}
+   <div class="muted">You own ${own.toLocaleString()} (${money(own*st.p)}) · fee ${(fe*100).toFixed(1)}%</div>${tip?`<div class="${tip>0?"up":"down"}">Your desk thinks ${st.t} will ${tip>0?"rise":"drop"} next.</div>`:""}
+   <div class="row"><span class="muted lbl">BUY</span>${pc.map(p=>`<button class="green" data-act="buy" data-p="${p}" ${Math.floor(Math.max(0,S.cash)*p/(st.p*(1+fe)))<1?"disabled":""}>${p*100}% OF CASH</button>`).join("")}<button class="green" data-act="buy" data-p="1" ${maxBuy<1?"disabled":""}>MAX</button></div>
+   <div class="row"><span class="muted lbl">SELL</span>${[.25,.5].map(p=>`<button class="red" data-act="sell" data-p="${p}" ${Math.floor(own*p)<1?"disabled":""}>${p*100}%</button>`).join("")}<button class="red" data-act="sell" data-p="1" ${!own?"disabled":""}>ALL</button></div></div>
+   <div class="muted">Portfolio ${money(T.portVal(S))}. A Trading Desk gives you tips about the next move, and lets you hire brokers.</div>`;return h}
+function vBrokers(){const F=S.fund,cap=T.brokerCap(S),bs=T.brokers(S);
+  let h=`<div class="muted">Brokers invest a share of your cash for you every market update. Better brokers (speed, charm, level) read the market correctly more often. They keep 15% of their winnings.</div>`;
+  if(!cap)return h+`<div class="why warn"><div><b>YOU NEED A TRADING DESK</b>Every Trading Desk level gives you one broker seat. Build one on any floor.</div></div>`;
+  h+=`<div class="tiles"><div class="tile"><span>Fund value</span><b class="up">${L(()=>money(S.fund.value))}</b></div><div class="tile"><span>Last trade</span><b>${L(()=>({html:`<span class="${S.fund.last>=0?"up":"down"}">${S.fund.last>=0?"+":""}${money(S.fund.last)}</span>`}))}</b></div><div class="tile"><span>All-time</span><b>${L(()=>({html:`<span class="${(S.fund.total||0)>=0?"up":"down"}">${(S.fund.total||0)>=0?"+":""}${money(S.fund.total||0)}</span>`}))}</b></div></div>
+  ${F.hist.length>1?spark(F.hist,300,70):""}
+  <div class="sec"><h3>HOW MUCH THEY INVEST</h3><div class="seg seg5">${[0,.1,.25,.4,.5].map(a=>`<button data-act="alloc" data-a="${a}" aria-pressed="${Math.abs(F.alloc-a)<.001}">${a*100}%<small>${a?"of your money":"pause"}</small></button>`).join("")}</div>
+    <div class="muted">They top up or hand back cash each update so the fund stays at this share of your money (cash plus fund).${bs.length?"":" Nothing is invested until you assign a broker."}</div></div>
+  <div class="sec"><h3>RISK</h3><div class="seg seg3">${Object.entries(T.RISK).map(([k,r])=>`<button data-act="risk" data-k="${k}" aria-pressed="${F.risk===k}">${r.name.toUpperCase()}<small>${r.desc}</small></button>`).join("")}</div></div>
+  <div class="sec"><h3>YOUR BROKERS ${bs.length}/${cap}</h3>`;
+  bs.forEach((e,i)=>{const on=i<cap;h+=`<div class="slot">${ava(e)}<div class="who"><b>${esc(e.name)} <span class="muted">Lv${e.lvl}</span></b><div class="muted">${on?`Reads the market right ${Math.round(T.brokerAcc(S,e)*100)}% of the time`:"No seat. Upgrade a Trading Desk."} · ${e.trades||0} trades · <span class="${(e.pnl||0)>=0?"up":"down"}">${money(e.pnl||0)}</span></div></div><div class="acts"><button class="ghost" data-act="unassign" data-id="${e.id}">REMOVE</button></div></div>`});
+  if(bs.length<cap){const c=S.emps.filter(e=>e.role==="staff"||e.role==="manager").sort((a,b)=>T.brokerSkill(b)-T.brokerSkill(a));
+    h+=c.length?`<select data-act="mkbrokersel"><option value="">Add a broker (${cap-bs.length} seat${cap-bs.length>1?"s":""} open)…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · would read right ${Math.round(T.brokerAcc(S,e)*100)}% · ${esc(shortWhere(e))}</option>`).join("")}</select><div class="muted">Brokers leave their current job. Their pay goes up 30%.</div>`:`<div class="muted">Hire someone to be a broker.</div>`}
+  h+=`</div>${F.value>=1?`<button class="ghost" data-act="withdraw">WITHDRAW EVERYTHING (${money(F.value)})</button>`:""}
+  <div class="sec"><h3>RECENT TRADES</h3><div class="log">${F.log.length?F.log.slice(0,8).map(x=>`<div><b>${esc(x.n)}</b> bought ${x.t}: <span class="${x.p>=0?"up":"down"}">${x.r>=0?"+":""}${(x.r*100).toFixed(1)}% · ${x.p>=0?"+":""}${money(x.p)}</span></div>`).join(""):`<div class="muted">No trades yet. Brokers trade every 20 seconds.</div>`}</div></div>`;
+  return h}
 
 /* ===== LAND ===== */
 V.land=()=>{let h=`<div class="head"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
@@ -354,7 +443,7 @@ const ACT={
   unassign:d=>{const e=T.emp(S,d.id);T.unassign(S,d.id);act("click",`${first(e)} is free for another job.`)},
   mgr:(d,el)=>{if(!el.value)return;const e=T.emp(S,el.value);T.setManager(S,el.value,S.cur,sel);act("fanfare",`${first(e)} is now a manager! Their pay went up 50%.`)},
   promote:(d,el)=>{if(!el.value)return;const[lot,i]=el.value.split(":");const e=T.emp(S,d.id);T.setManager(S,d.id,lot,+i);act("fanfare",`${first(e)} is now managing the ${T.BIZ[S.lots[lot].floors[+i].type].name}!`)},
-  promoready:d=>{const e=T.emp(S,d.id);e.promoReady=true;act("click")},
+  promoready:d=>{armed["promo"+d.id]=1;TU.open=d.id;act("click")},
   ability:()=>{const f=S.lots[S.cur].floors[sel],m=T.emp(S,f.manager);if(!m||f.abil>Date.now())return;f.abil=Date.now()+300e3;
     if(m.ability==="pep"){f.staff.forEach(id=>{const e=T.emp(S,id);if(e){e.energy=100;e.mood=Math.min(100,e.mood+15)}});toast(`${first(m)} fired everyone up!`)}
     else{f.buff={kind:m.ability,until:Date.now()+60e3};toast(m.ability==="rush"?"Rush hour! Double customers for 60 seconds.":"Happy hour! +50% revenue for 60 seconds.")}act("up")},
@@ -373,8 +462,27 @@ const ACT={
   inbox:d=>{const r=T.resolveInbox(S,rt,d.id,d.a);if(!r.ok){SFX.play("bad");return toast(r.msg)}act(d.a==="deny"?"click":"up",r.msg)},
   deal:d=>{if(d.y==="1"){const r=T.applyDeal(S,d.id);if(!r.ok){SFX.play("bad");return toast(r.msg)}act("deal",r.msg)}else{T.declineDeal(S,d.id);act("click")}},
   stock:d=>{mktSel=d.t;act("click")},
-  buy:d=>{const st=S.stocks.find(s=>s.t===mktSel),fe=T.fee(S),q=d.q==="max"?Math.floor(S.cash/(st.p*(1+fe))):+d.q,c=q*st.p*(1+fe);if(q<1||S.cash<c)return;S.cash-=c;S.port[st.t]=(S.port[st.t]||0)+q;act("coin")},
-  sell:d=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,q=d.q==="all"?own:+d.q;if(q<1||own<q)return;S.cash+=q*st.p*(1-T.fee(S));S.port[st.t]=own-q;act("cash")},
+  mktsub:d=>{mktSub=d.k;act("click");$("#body").scrollTop=0},
+  alloc:d=>{S.fund.alloc=+d.a;act("click",+d.a?`Brokers will keep ${+d.a*100}% of your money invested.`:"Brokers paused. They'll hand the fund back at the next update.")},
+  risk:d=>{S.fund.risk=d.k;act("click")},
+  withdraw:()=>{S.cash+=S.fund.value;const v=S.fund.value;S.fund.value=0;S.fund.alloc=0;act("cash",`${money(v)} moved back to cash. Investing is paused.`)},
+  mkbrokersel:(d,el)=>{if(!el.value)return;ACT.mkbroker({id:el.value})},
+  mkbroker:d=>{if(T.brokers(S).length>=T.brokerCap(S))return toast("No broker seats. Upgrade a Trading Desk.");const e=T.emp(S,d.id);T.setRole(S,d.id,"broker");act("fanfare",`${first(e)} is now a broker!`)},
+  mkhrsel:(d,el)=>{if(!el.value)return;ACT.mkhr({id:el.value})},
+  mkhr:d=>{const old=T.hrDirector(S);if(old)T.unassign(S,old.id);const e=T.emp(S,d.id);T.setRole(S,d.id,"hr");TU.sub="hr";act("fanfare",`${first(e)} is your new HR Director!`)},
+  hrtoggle:d=>{S.hr[d.k]=!S.hr[d.k];act("click")},
+  teamsub:(d,el,ev)=>{ev?.preventDefault?.();TU.sub=d.k;TU.open=null;act("click");$("#body").scrollTop=0},
+  tfilter:d=>{TU.filter=d.k;TU.limit=40;act("click")},
+  tsort:(d,el)=>{TU.sort=el.value;act("click")},
+  tmore:()=>{TU.limit+=40;act("click")},
+  openemp:d=>{TU.open=TU.open===d.id?null:d.id;act("click")},
+  placeemp:(d,el)=>{if(!el.value)return;const[lot,i,k]=el.value.split(":"),e=T.emp(S,d.id);T.assign(S,d.id,lot,+i,+k);act("coin",`${first(e)} is on the ${T.BIZ[S.lots[lot].floors[+i].type].name}.`)},
+  payfair:()=>{let n=0;S.emps.forEach(e=>{if(underpaid(e)){e.salary=Math.round(T.fairPay(e)*1.02*100)/100;e.mood=Math.min(100,e.mood+10);e.low=0;n++}});act("coin",`${n} people got a fair raise. Morale is up.`)},
+  praiseall:()=>{let n=0;S.emps.forEach(e=>{if(praiseReady(e)&&e.mood<80){e.praisedAt=Date.now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);n++}});act("up",`You thanked ${n} people. Smiles all around.`)},
+  spendall:()=>{let n=0;S.emps.forEach(e=>{while(e.pts>0){if(!T.spendPoint(e))break;e.pts--;n++}});act("level",`Spent ${n} skill point${n>1?"s":""}: speed first, then charm, then stamina.`)},
+  fillall:()=>{let n=0;for(const e of S.emps.filter(e=>e.role==="staff"&&e.state==="idle")){const es=T.emptyStations(S),b=es.find(x=>x.f.type===e.fav)||es[0];if(!b)break;T.assign(S,e.id,b.lot,b.i,b.k);n++}act("coin",`${n} empty station${n>1?"s":""} filled.`)},
+  buy:d=>{const st=S.stocks.find(s=>s.t===mktSel),fe=T.fee(S),q=Math.floor(Math.max(0,S.cash)*+d.p/(st.p*(1+fe))),c=q*st.p*(1+fe);if(q<1||S.cash<c)return;S.cash-=c;S.port[st.t]=(S.port[st.t]||0)+q;act("coin",`Bought ${q.toLocaleString()} ${st.t} for ${money(c)}.`)},
+  sell:d=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,q=+d.p>=1?own:Math.floor(own*+d.p);if(q<1)return;const v=q*st.p*(1-T.fee(S));S.cash+=v;S.port[st.t]=own-q;act("cash",`Sold ${q.toLocaleString()} ${st.t} for ${money(v)}.`)},
   visit:d=>{goLot(d.l);setTab("floor")},
   buylot:d=>{const l=T.lotDef(d.l),p=T.lotPrice(S,l);if(S.cash<p)return;S.cash-=p;S.spent+=l.price;S.landDiscount=0;S.lots[l.id]={floors:[{type:null},{type:null}]};
     T.log(S,`Bought ${l.name}!`);note({kind:"milestone",title:"NEW PROPERTY!",text:`Welcome to ${l.name}. ${l.blurb}`,sfx:"fanfare"});goLot(l.id);setTab("floor")},
@@ -391,10 +499,11 @@ const ACT={
   reset:()=>{if(!armed.reset)return arm("reset");delete armed.reset;const keep=S.settings;S=T.fresh();S.settings=keep;S.tutorialDone=true;rt.f={};sel=0;act("bad","Fresh start. Go build.")},
 };
 const body=$("#body");
-body.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||b.disabled||b.tagName==="SELECT")return;SFX.unlock();ACT[b.dataset.act]?.(b.dataset,b)});
+body.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||b.disabled||b.tagName==="SELECT")return;if(b.tagName==="A")e.preventDefault();SFX.unlock();ACT[b.dataset.act]?.(b.dataset,b,e)});
 body.addEventListener("change",e=>{const s=e.target.closest("select[data-act]");if(s)ACT[s.dataset.act]?.(s.dataset,s);
   if(e.target.id==="imp-file"&&e.target.files[0]){const r=new FileReader();r.onload=()=>{saveUI.imp=String(r.result);dirty=true;render();toast("Save file loaded. Tap LOAD THIS SAVE.")};r.readAsText(e.target.files[0])}});
-body.addEventListener("input",e=>{if(e.target.id==="imp-code"){const had=!!saveUI.imp.trim();saveUI.imp=e.target.value;const b=body.querySelector('[data-act="importsave"]');if(b)b.disabled=!saveUI.imp.trim();if(had!==!!saveUI.imp.trim())lastSig=sig()}});
+body.addEventListener("input",e=>{if(e.target.id==="tsearch"){TU.q=e.target.value;const q=TU.q.trim().toLowerCase();body.querySelectorAll(".erow").forEach(r=>r.hidden=!!q&&!r.dataset.name.includes(q))}
+  if(e.target.id==="imp-code"){const had=!!saveUI.imp.trim();saveUI.imp=e.target.value;const b=body.querySelector('[data-act="importsave"]');if(b)b.disabled=!saveUI.imp.trim();if(had!==!!saveUI.imp.trim())lastSig=sig()}});
 body.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("tr[data-act]"))ACT.stock(e.target.dataset)});
 addEventListener("pointerdown",()=>{pointerDown=true;SFX.unlock()});addEventListener("pointerup",()=>setTimeout(()=>pointerDown=false,50));
 body.addEventListener("focusin",e=>{if(e.target.tagName==="SELECT")pointerDown=true});body.addEventListener("focusout",e=>{if(e.target.tagName==="SELECT")pointerDown=false});
@@ -405,7 +514,7 @@ function handle(evs){for(const e of evs){if(e.dirty)dirty=true;if(e.title)note(e
 setInterval(()=>{const n=performance.now();let dt=(n-last)/1000;last=n;
   if(dt>90){const o=T.offline(S);if(o){T.applyOffline(S,o);note({kind:"good",title:"WELCOME BACK",text:`Managers earned ${money(o.earned)} and registers filled with ${money(o.filled)}.`,sfx:"cash"});view.rebuild()}return}
   while(dt>0){const s=Math.min(.5,dt);handle(T.tick(S,rt,s));dt-=s}},100);
-setInterval(()=>{hud();live();if(!pointerDown&&document.activeElement?.tagName!=="TEXTAREA"&&(dirty||sig()!==lastSig))render()},350);
+setInterval(()=>{hud();live();if(!pointerDown&&!["TEXTAREA","INPUT"].includes(document.activeElement?.tagName)&&(dirty||sig()!==lastSig))render()},350);
 
 /* ---------- tutorial ---------- */
 const STEPS=[
