@@ -86,13 +86,16 @@ const trait=e=>TRAITS.find(t=>t.id===e.trait)||TRAITS[0];
 function bizFloor(type){return{type,stations:1,decor:0,price:1,staff:[null],manager:null,register:0,rating:3,served:0,reviews:[],abil:0,buff:null}}
 function supFloor(type){return{type,lvl:1}}
 const STOCK_DEFS=[
-  {t:"PXLS",n:"Pixel Corp",p:42,vol:.03,drift:.002},{t:"BYTE",n:"Byte Foods",p:18,vol:.022,drift:.001},{t:"CHIP",n:"ChipForge",p:120,vol:.04,drift:.003},
-  {t:"MOON",n:"MoonRocket",p:6,vol:.09,drift:0},{t:"SODA",n:"Fizz Soda",p:55,vol:.012,drift:.0015},{t:"GRID",n:"GridPower",p:30,vol:.028,drift:.0015},
+  {t:"PXLS",n:"Pixel Corp",p:42,vol:.03,drift:.0004,sec:"tech"},{t:"CHIP",n:"ChipForge",p:120,vol:.04,drift:.0006,sec:"tech"},
+  {t:"BYTE",n:"Byte Foods",p:18,vol:.022,drift:.0002,sec:"food",div:.002},{t:"SODA",n:"Fizz Soda",p:55,vol:.012,drift:.0003,sec:"food",div:.003},
+  {t:"GRID",n:"GridPower",p:30,vol:.028,drift:.0003,sec:"energy",div:.0025},{t:"VOLT",n:"Volt Motors",p:64,vol:.045,drift:.0004,sec:"energy"},
+  {t:"MOON",n:"MoonRocket",p:6,vol:.09,drift:0,sec:"space"},{t:"ORBT",n:"Orbit Labs",p:210,vol:.06,drift:.0006,sec:"space"},
+  {t:"BANK",n:"Sterling Bank",p:90,vol:.015,drift:.0002,sec:"finance",div:.0035},{t:"MEGA",n:"Gigamart",p:75,vol:.02,drift:.0003,sec:"finance",div:.0025},
   // penny stocks: cheap, wild, and they can rocket or crash
-  {t:"MEME",n:"Meme Corp",p:.5,vol:.16,drift:-.002,penny:1},{t:"YOLO",n:"Yolo Motors",p:1.2,vol:.14,drift:-.002,penny:1},
-  {t:"ZAPP",n:"Zapp Energy",p:.9,vol:.18,drift:-.003,penny:1},{t:"GOOB",n:"Goober Labs",p:2.4,vol:.12,drift:-.001,penny:1},
-  {t:"FROG",n:"Frog Holdings",p:.3,vol:.2,drift:-.003,penny:1}];
-const mkStock=d=>({...d,base:d.p,hist:Array.from({length:30},(_,i)=>d.p*(1+Math.sin(i/4)*.04+rnd(-.03,.03))),trend:rnd(-.01,.01)});
+  {t:"MEME",n:"Meme Corp",p:.5,vol:.16,drift:-.002,penny:1,sec:"penny"},{t:"YOLO",n:"Yolo Motors",p:1.2,vol:.14,drift:-.002,penny:1,sec:"penny"},
+  {t:"ZAPP",n:"Zapp Energy",p:.9,vol:.18,drift:-.003,penny:1,sec:"penny"},{t:"GOOB",n:"Goober Labs",p:2.4,vol:.12,drift:-.001,penny:1,sec:"penny"},
+  {t:"FROG",n:"Frog Holdings",p:.3,vol:.2,drift:-.003,penny:1,sec:"penny"}];
+const mkStock=d=>{const s={...d,base:d.p,hist:Array.from({length:30},(_,i)=>d.p*(1+Math.sin(i/4)*.04+rnd(-.03,.03))),trend:rnd(-.01,.01)};scheduleEarnings(s);s.earnIn=s.earnIn&&ri(4,30);return s};
 function mkStocks(){return STOCK_DEFS.map(mkStock)}
 function fresh(){
   const first=mkEmp(0,{trait:"loyal"});first.fav="cafe";first.spd=4;first.chr=4;first.sta=4;first.salary=Math.round(fairPay(first)*100)/100;
@@ -100,7 +103,7 @@ function fresh(){
     lots:{main:{floors:[bizFloor("cafe"),{type:null}]}},
     emps:[first],applicants:[],appAt:0,inbox:[],deals:[],stocks:mkStocks(),port:{},tips:{},buffs:[],contracts:[],
     landDiscount:0,goalIdx:0,spent:300,
-    fund:{value:0,alloc:.2,risk:"bal",hist:[],log:[],total:0,last:0},
+    fund:{cash:0,pos:{},alloc:.2,hist:[],log:[],total:0,last:0},mkt:{sec:{},sent:0,news:[],newsIn:3,divT:0},basis:{},orders:{},realized:0,divPaid:0,
     hr:{raises:true,points:true,staffing:true,favorites:true,training:true,praise:true,requests:true,promote:false},hrLog:[],totalEarned:0,bestMin:0,chart:[],log:["Day 1. A tiny café on Main Street, one loyal employee and $500."],
     settings:{sound:true,notify:true},tutorialDone:false,lastTick:Date.now(),lastDealGen:0,nextEvent:Date.now()+150e3,clock:{mkt:0,day:0,chart:0},rev:0,writer:"",heartbeat:0};
   assign(S,first.id,"main",0,0);refreshApplicants(S);return S}
@@ -149,7 +152,7 @@ const contractPerMin=S=>S.contracts.reduce((a,c)=>a+(c.until>now()?c.perMin:0),0
 function estIncomePerMin(S){let t=0;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type))t+=estPerMin(S,lot,i,f)});return t+contractPerMin(S)}
 const regTotal=S=>Object.values(S.lots).reduce((a,L)=>a+L.floors.reduce((b,f)=>b+(f.register||0),0),0);
 const portVal=S=>Object.entries(S.port).reduce((a,[t,q])=>a+q*S.stocks.find(s=>s.t===t).p,0);
-const netWorth=S=>S.cash+portVal(S)+S.spent*.5+regTotal(S)+(S.fund?S.fund.value:0);
+const netWorth=S=>S.cash+portVal(S)+S.spent*.5+regTotal(S)+(S.fund?fundValue(S):0);
 const fee=S=>Math.max(.002,.02-.004*coSum(S,"trade"));
 const avgRating=S=>{let n=0,t=0;for(const L of Object.values(S.lots))for(const f of L.floors)if(isBiz(f.type)){n++;t+=f.rating}return n?t/n:0};
 
@@ -165,11 +168,12 @@ function setManager(S,id,lot,i){const e=emp(S,id),f=S.lots[lot].floors[i];if(!e|
   e.salary=Math.round(Math.max(e.salary,fairPay(e))*1.5*100)/100;return true}
 /* brokers and the HR director are employees who leave the floor for a special job */
 function setRole(S,id,role){const e=emp(S,id);if(!e)return false;unassign(S,id);e.role=role;e.state=role;e.promoReady=false;
+  if(role==="broker"){e.strat=e.strat||"day";e.sector=e.sector||{cafe:"food",burger:"food",dining:"food",arcade:"tech",boutique:"finance",spa:"energy"}[e.fav]||"tech"}
   e.salary=Math.round(Math.max(e.salary,fairPay(e))*(role==="hr"?1.5:1.3)*100)/100;return true}
 const brokers=S=>S.emps.filter(e=>e.role==="broker");
 const brokerCap=S=>coSum(S,"trade");
 const brokerSkill=e=>e.spd*.5+e.chr*.3+Math.min(10,e.lvl)*.4;
-const brokerAcc=(S,e)=>Math.min(.72,.5+.015*brokerSkill(e)+.008*coSum(S,"trade"));
+const brokerAcc=(S,e)=>Math.min(.655,.5+.013*brokerSkill(e)+.006*coSum(S,"trade"));
 const hrDirector=S=>S.emps.find(e=>e.role==="hr");
 const hrActive=S=>!!hrDirector(S)&&coSum(S,"office")>0;
 function seatsFree(S,lot,type){const cap=2*lotSum(S,lot,type);const used=S.emps.filter(e=>(e.state==="break"||e.state==="train")&&e.at&&e.at.lot===lot&&S.lots[lot].floors[e.at.i]?.type===type).length;return cap-used}
@@ -288,40 +292,100 @@ function simStaff(S,dt,t,ev){
   }
 }
 
-/* ---------- market ---------- */
+/* ---------- market: sectors, news, earnings, dividends, orders ---------- */
+const SECTORS={tech:{name:"Tech",color:"#5ad1ff"},food:{name:"Food & Drink",color:"#ff9b4a"},energy:{name:"Energy",color:"#5ee08a"},space:{name:"Space",color:"#b78cff"},finance:{name:"Finance & Retail",color:"#ffcc3d"},penny:{name:"Penny stocks",color:"#ff7ad9"}};
+const PERKS=[{l:1,n:"Desk tips and your first broker seat"},{l:2,n:"Stop-loss and take-profit orders"},{l:3,n:"Analyst ratings on every stock"},{l:4,n:"Earnings previews before each report"},{l:5,n:"Breaking news one update before the market reacts"}];
+const deskLvl=S=>coSum(S,"trade");
+const hasPerk=(S,l)=>deskLvl(S)>=l;
+const NEWS={
+  secUp:["{S} demand is booming","Government backs {S} with new funding","{S} sales beat expectations nationwide","Big investors pile into {S}"],
+  secDown:["{S} hit by supply shortages","New rules squeeze {S} companies","{S} demand cools off","Investors dump {S} stocks"],
+  coUp:["{N} unveils a hit new product","{N} lands a huge contract","Analysts upgrade {N}","{N} reports record customers"],
+  coDown:["{N} recalls its best seller","{N} CEO steps down suddenly","{N} hit by a data breach","{N} loses a major lawsuit"],
+  mktUp:["Interest rates cut. Investors cheer.","Strong jobs report lifts the whole market"],
+  mktDown:["Recession fears rattle the market","Bank troubles spook investors"]};
+function stockTimeToEarn(S,s){return s.earnIn==null?null:Math.max(0,(s.earnIn-1)*20+(20-(S.clock.mkt||0)))}
+function scheduleEarnings(s){if(s.penny){s.earnIn=null;return}s.earnIn=ri(18,30);s.bias=Math.random()<.5+clamp((s.trend||0)*8,-.15,.15)?1:-1;s.preview=null}
+function genNews(S,ev){const M=S.mkt,r=Math.random(),dir=Math.random()<.5?1:-1,big=Math.random()<.3,delay=hasPerk(S,5)?2:1;let n;
+  if(r<.45){const secs=Object.keys(SECTORS).filter(k=>k!=="penny"),sec=pick(secs);n={kind:"sec",sec,h:pick(NEWS[dir>0?"secUp":"secDown"]).replace("{S}",SECTORS[sec].name),imp:dir*rnd(.012,.022)*(big?1.7:1)}}
+  else if(r<.88){const s=pick(S.stocks.filter(x=>!x.penny));n={kind:"co",t:s.t,sec:s.sec,h:pick(NEWS[dir>0?"coUp":"coDown"]).replace("{N}",s.n),imp:dir*s.vol*rnd(.6,1.1)*(big?1.6:1)}}
+  else n={kind:"mkt",h:pick(NEWS[dir>0?"mktUp":"mktDown"]),imp:dir*rnd(.006,.012)*(big?1.6:1)};
+  Object.assign(n,{id:Math.random().toString(36).slice(2,8),dir,big,in:delay,at:now()});M.news.unshift(n);M.news=M.news.slice(0,25);
+  const mine=n.kind==="mkt"?Object.keys(S.port).some(t=>S.port[t]>0):n.kind==="sec"?S.stocks.some(s=>s.sec===n.sec&&S.port[s.t]>0):S.port[n.t]>0;
+  if(big||mine)ev.push({kind:dir>0?"good":"bad",title:(big?"BIG NEWS: ":"NEWS: ")+(n.t||(n.sec?SECTORS[n.sec].name.toUpperCase():"MARKET")),text:n.h+(mine?". You own shares that this affects.":". Prices react on the next update."),sfx:"alert"})}
+function applyNews(S){const M=S.mkt;for(const n of M.news){if(n.in<=0)continue;n.in--;if(n.in>0)continue;
+  if(n.kind==="sec")M.sec[n.sec]=(M.sec[n.sec]||0)+n.imp;else if(n.kind==="mkt")M.sent+=n.imp;else{const s=S.stocks.find(x=>x.t===n.t);if(s)s.trend+=n.imp}}}
+function expectedMove(S,s){const M=S.mkt,beta=s.penny?1:s.vol/.03;let e=s.drift+s.trend+((M.sec[s.sec]||0)+M.sent)*beta;
+  for(const n of M.news)if(n.in===1&&(n.kind==="mkt"||(n.kind==="sec"&&n.sec===s.sec)||(n.kind==="co"&&n.t===s.t)))e+=n.kind==="co"?n.imp:n.imp*beta;return e}
+function buyStock(S,t,q,cashOverride){const s=S.stocks.find(x=>x.t===t),f=fee(S),c=q*s.p*(1+f);if(q<1||S.cash<c)return null;
+  const q0=S.port[t]||0;S.basis[t]=((S.basis[t]||s.p)*q0+s.p*q)/(q0+q);S.port[t]=q0+q;S.cash-=c;return{cost:c}}
+function sellStock(S,t,q){const s=S.stocks.find(x=>x.t===t),own=S.port[t]||0;q=Math.min(q,own);if(q<1)return null;const v=q*s.p*(1-fee(S)),pnl=v-q*(S.basis[t]||s.p);
+  S.cash+=v;S.port[t]=own-q;S.realized=(S.realized||0)+pnl;if(!S.port[t]){delete S.basis[t];delete S.orders[t]}return{value:v,pnl}}
 function marketTick(S,ev){
-  const tipOdds=Math.min(.7,.08*coSum(S,"trade")),moves={};
-  S.stocks.forEach(s=>{let mv=s.drift+s.trend+(Math.random()-.5)*2*s.vol;if(S.tips[s.t])mv=Math.abs(mv)*S.tips[s.t]+S.tips[s.t]*s.vol*.4;
+  const M=S.mkt,tipOdds=Math.min(.7,.08*deskLvl(S)),moves={};
+  applyNews(S);
+  S.stocks.forEach(s=>{const beta=s.penny?1:s.vol/.03;let mv=s.drift+s.trend+((M.sec[s.sec]||0)+M.sent)*beta+(Math.random()-.5)*2*s.vol;
+    if(S.tips[s.t])mv=Math.abs(mv)*S.tips[s.t]+S.tips[s.t]*s.vol*.4;
     if(Math.random()<.02)mv+=(Math.random()<.5?-1:1)*s.vol*4;s.event=null;
     if(s.penny){if(Math.random()<.012){mv=Math.abs(mv)+rnd(1,5);s.event="moon"}else if(Math.random()<.01){mv=-rnd(.45,.8);s.event="bust"}}
+    else if(s.earnIn!=null&&--s.earnIn<=0){mv+=s.bias*s.vol*rnd(2.5,5);s.event=s.bias>0?"beat":"miss"}
     moves[s.t]=Math.max(-.9,mv)});
-  brokerTick(S,moves,ev);
-  S.stocks.forEach(s=>{const mv=moves[s.t];s.p=Math.max(s.penny?.02:.5,s.p*(1+mv));s.hist.push(s.p);s.hist=s.hist.slice(-40);
-    s.trend=s.trend*.7+rnd(-.012,.012)+(s.penny?clamp(.03*Math.log((s.base||1)/s.p),-.12,.08):0);
+  const fv0=brokerTick(S,moves,ev);
+  S.stocks.forEach(s=>{const mv=moves[s.t];s.last=mv;s.p=Math.max(s.penny?.02:.5,s.p*(1+mv));s.hist.push(s.p);s.hist=s.hist.slice(-40);
+    if(!s.penny)s.base=(s.base||s.p)*(1+s.drift);
+    s.trend=s.trend*.7+rnd(-1,1)*s.vol*.25+(s.penny?clamp(.03*Math.log((s.base||1)/s.p),-.12,.08):clamp(.006*Math.log((s.base||s.p)/s.p),-.012,.012));
     const own=S.port[s.t]||0;
     if(s.event==="moon")ev.push({kind:own?"big":"info",title:`${s.t} MOONSHOT ▲${Math.round(mv*100)}%`,text:own?`Your ${own.toLocaleString()} shares are now worth ${money(own*s.p)}! Penny rockets usually fall back, so think about cashing out.`:`${s.n} just exploded. Spikes like this usually fade within a few minutes.`,sfx:own?"fanfare":"alert"});
     else if(s.event==="bust"&&own)ev.push({kind:"bad",title:`${s.t} CRASHED ▼${Math.round(-mv*100)}%`,text:`Your ${s.t} shares fell to ${money(own*s.p)}. Penny stocks often bounce back, but not always.`,sfx:"bad"});
+    else if(s.event==="beat"||s.event==="miss"){if(own||hasPerk(S,4))ev.push({kind:s.event==="beat"?(own?"big":"good"):"bad",title:`${s.t} ${s.event==="beat"?"BEAT":"MISSED"} EARNINGS ${mv>0?"▲":"▼"}${Math.abs(mv*100).toFixed(1)}%`,text:own?`Your ${own.toLocaleString()} shares ${mv>0?"gained":"lost"} ${money(Math.abs(own*s.p*mv/(1+mv)))}.`:`${s.n} reported results.`,sfx:s.event==="beat"?"up":"bad"});scheduleEarnings(s)}
     else if(!s.penny&&own&&Math.abs(mv)>=.06){const v=own*s.p*mv/(1+mv);
-      ev.push(mv>0?{kind:"big",title:`${s.t} UP ${(mv*100).toFixed(1)}%`,text:`Your ${own} shares gained ${money(v)}.`,sfx:"up"}:{kind:"bad",title:`${s.t} DOWN ${(-mv*100).toFixed(1)}%`,text:`Your ${own} shares lost ${money(-v)}.`,sfx:"bad"})}});
-  S.tips={};if(Math.random()<tipOdds){const s=pick(S.stocks);S.tips[s.t]=s.trend>=0?1:-1;ev.push({kind:"info",title:"DESK TIP",text:`Your traders think ${s.t} goes ${s.trend>=0?"UP":"DOWN"} next.`,sfx:"alert"})}
+      ev.push(mv>0?{kind:"big",title:`${s.t} UP ${(mv*100).toFixed(1)}%`,text:`Your ${own.toLocaleString()} shares gained ${money(v)}.`,sfx:"up"}:{kind:"bad",title:`${s.t} DOWN ${(-mv*100).toFixed(1)}%`,text:`Your ${own.toLocaleString()} shares lost ${money(-v)}.`,sfx:"bad"})}
+    if(s.earnIn!=null&&s.earnIn<=3&&s.preview==null&&hasPerk(S,4))s.preview=Math.random()<.75?s.bias:-s.bias;
+    if(hasPerk(S,3)){const e=expectedMove(S,s),thr=s.penny?.03:.004;let r=Math.abs(e)<thr?0:Math.sign(e);if(Math.random()>.72)r=r===0?pick([1,-1]):(Math.random()<.5?0:-r);s.rating=r}});
+  // automatic orders
+  if(hasPerk(S,2))for(const[t,o]of Object.entries(S.orders)){const s=S.stocks.find(x=>x.t===t),own=S.port[t]||0,b=S.basis[t];if(!s||!own||!b)continue;
+    const g=s.p/b-1;let why=null;if(o.tp&&g>=o.tp)why="TAKE PROFIT";else if(o.sl&&g<=-o.sl)why="STOP LOSS";
+    if(why){const r=sellStock(S,t,own);ev.push({kind:r.pnl>=0?"big":"bad",title:`${why}: SOLD ${t}`,text:`Sold ${own.toLocaleString()} ${t} at ${g>=0?"+":""}${(g*100).toFixed(1)}% for ${money(r.value)} (${r.pnl>=0?"+":""}${money(r.pnl)}).`,sfx:r.pnl>=0?"cash":"bad",dirty:1})}}
+  // dividends every 5 minutes of play
+  M.divT=(M.divT||0)+20;if(M.divT>=300){M.divT=0;let paid=0;
+    for(const s of S.stocks)if(s.div){paid+=(S.port[s.t]||0)*s.p*s.div;for(const p of Object.values(S.fund.pos))if(p.t===s.t)S.fund.cash+=p.q*s.p*s.div}
+    if(paid>=1){S.cash+=paid;S.divPaid=(S.divPaid||0)+paid;S.totalEarned+=paid;ev.push({kind:"good",title:"DIVIDENDS PAID",text:`Your stocks paid you ${money(paid)} in dividends.`,sfx:"coin"})}}
+  // sector momentum fades, market mood fades
+  for(const k in M.sec)M.sec[k]*=.8;M.sent*=.85;
+  const F=S.fund;if(fv0!=null){const fv=fundValue(S);F.last=fv-fv0;F.total=(F.total||0)+F.last;F.hist.push(Math.round(fv));F.hist=F.hist.slice(-60);
+    if(Math.abs(F.last)>Math.max(1000,fv*.08))ev.push(F.last>0?{kind:"big",title:"BROKERS SCORED",text:`Your broker fund made ${money(F.last)} this update.`,sfx:"cash"}:{kind:"bad",title:"BROKERS TOOK A HIT",text:`Your broker fund lost ${money(-F.last)} this update.`,sfx:"bad"})}
+  if(--M.newsIn<=0){M.newsIn=ri(3,6);genNews(S,ev)}
+  S.tips={};if(Math.random()<tipOdds){const s=pick(S.stocks);const d=expectedMove(S,s)>=0?1:-1;S.tips[s.t]=d;ev.push({kind:"info",title:"DESK TIP",text:`Your traders think ${s.t} goes ${d>0?"UP":"DOWN"} next.`,sfx:"alert"})}
 }
 
-/* ---------- brokers: they invest part of your cash every market update ---------- */
-const RISK={safe:{name:"Safe",desc:"Steady, low-swing stocks only.",ok:s=>!s.penny&&s.vol<=.03},bal:{name:"Balanced",desc:"Any regular stock. No penny stocks.",ok:s=>!s.penny},wild:{name:"Wild",desc:"Penny stocks included. Brokers can't read them well, so it's mostly luck: big wins and big losses.",ok:()=>true}};
+/* ---------- brokers: each one runs a strategy and holds real positions ---------- */
+const STRATS={
+  day:{name:"Day trader",desc:"Trades any regular stock, in and out quickly.",ok:s=>!s.penny},
+  sector:{name:"Sector specialist",desc:"Only trades one sector, and reads it much better.",ok:(s,e)=>!s.penny&&s.sec===(e.sector||"tech")},
+  dividend:{name:"Dividend hunter",desc:"Holds steady dividend stocks and collects the payouts. Low risk.",ok:s=>s.div>0},
+  penny:{name:"Penny hunter",desc:"Chases penny stocks. Mostly luck: huge wins and big losses.",ok:s=>s.penny}};
+const RISK={};// kept so old saves load
+const fundValue=S=>{const F=S.fund;let v=F.cash||0;for(const p of Object.values(F.pos||{})){const s=S.stocks.find(x=>x.t===p.t);if(s)v+=p.q*s.p}return v};
+function brokerAccOn(S,e,s){if(s.event==="moon"||s.event==="bust")return .5;let a=brokerAcc(S,e);
+  if(e.strat==="sector"&&s.sec===e.sector)a+=.035;if(e.strat==="dividend"&&s.div)a+=.02;
+  if(S.mkt.news.some(n=>n.in===0&&Date.now()-n.at<120e3&&(n.t===s.t||n.sec===s.sec)))a+=.015;
+  if(s.penny)a=.5+(a-.5)*.4;return Math.min(.8,a)}
 function brokerTick(S,moves,ev){
-  const F=S.fund,bs=brokers(S).slice(0,brokerCap(S));
-  const target=bs.length?F.alloc*(Math.max(0,S.cash)+F.value):0;let diff=target-F.value;
-  if(diff>0)diff=Math.min(diff,Math.max(0,S.cash));S.cash-=diff;F.value+=diff;
-  if(!bs.length||F.value<1){F.last=0;F.hist.push(Math.round(F.value));F.hist=F.hist.slice(-60);return}
-  const uni=S.stocks.filter(RISK[F.risk]?.ok||RISK.bal.ok),slice=F.value/bs.length;let net=0;
-  for(const e of bs){const s=pick(uni),mv=moves[s.t],acc=s.event?.5:s.penny?.5+(brokerAcc(S,e)-.5)*.4:brokerAcc(S,e),good=Math.random()<acc,buy=good?mv>0:mv<=0;
-    e.xp+=.5;e.trades=(e.trades||0)+1;
-    if(!buy){continue}
-    let p=slice*(mv-(s.penny?.02:.003));const com=p>0?p*.15:0;p-=com;net+=p;e.pnl=(e.pnl||0)+p;
-    F.log.unshift({n:e.name.split(" ")[0],t:s.t,r:mv,p:Math.round(p),at:now()})}
-  F.value=Math.max(0,F.value+net);F.last=net;F.total=(F.total||0)+net;F.log=F.log.slice(0,12);F.hist.push(Math.round(F.value));F.hist=F.hist.slice(-60);
-  if(Math.abs(net)>Math.max(1000,F.value*.08))ev.push(net>0?{kind:"big",title:"BROKERS SCORED",text:`Your brokers made ${money(net)} on that trade.`,sfx:"cash"}:{kind:"bad",title:"BROKERS TOOK A HIT",text:`Your broker fund lost ${money(-net)} on that trade.`,sfx:"bad"});
-}
+  const F=S.fund,bs=brokers(S).slice(0,brokerCap(S)),ids=new Set(bs.map(e=>e.id)),fb=.004;
+  // positions of brokers who left are sold back into the fund
+  for(const[id,p]of Object.entries(F.pos)){if(!ids.has(id)){const s=S.stocks.find(x=>x.t===p.t);if(s)F.cash+=p.q*s.p*(1-fb);delete F.pos[id]}}
+  let fv=fundValue(S);const target=bs.length?F.alloc*(Math.max(0,S.cash)+fv):0;let diff=target-fv;
+  if(diff>0){diff=Math.min(diff,Math.max(0,S.cash));S.cash-=diff;F.cash+=diff}else if(diff<0){const back=Math.min(-diff,F.cash);F.cash-=back;S.cash+=back}
+  if(!bs.length){return fundValue(S)>=1?fundValue(S):null}
+  fv=fundValue(S);const budget=fv/bs.length;
+  for(const e of bs){const strat=STRATS[e.strat]?e.strat:"day";let pos=F.pos[e.id];
+    if(pos){const s=S.stocks.find(x=>x.t===pos.t),mv=moves[s.t],good=Math.random()<brokerAccOn(S,e,s),seesDown=good?mv<=0:mv>0;
+      if(seesDown&&!(strat==="dividend"&&(Math.random()<.8||s.p<pos.cost))){const fee=s.penny?.02:fb,v=pos.q*s.p*(1-fee),pnl=v-pos.q*pos.cost,com=pnl>0?pnl*.2:0;
+        F.cash+=v-com;e.pnl=(e.pnl||0)+pnl-com;e.trades=(e.trades||0)+1;e.xp+=1;F.log.unshift({n:e.name.split(" ")[0],a:"sold",t:s.t,r:s.p/pos.cost-1,p:Math.round(pnl-com),at:now()});delete F.pos[e.id];pos=null}}
+    if(!pos){const uni=S.stocks.filter(s=>STRATS[strat].ok(s,e));if(!uni.length)continue;const s=strat==="dividend"?uni.sort((a,b)=>(b.div/(b.p/(b.base||b.p)))-(a.div/(a.p/(a.base||a.p))))[0]:pick(uni),mv=moves[s.t],good=Math.random()<brokerAccOn(S,e,s),seesUp=strat==="dividend"?(good||Math.random()<.5):good?mv>0:mv<=0;
+      if(seesUp){const fee=s.penny?.02:fb,spend=Math.min(budget,F.cash),q=Math.floor(spend/(s.p*(1+fee)));
+        if(q>=1){F.cash-=q*s.p*(1+fee);F.pos[e.id]={t:s.t,q,cost:s.p*(1+fee)};e.xp+=.5;F.log.unshift({n:e.name.split(" ")[0],a:"bought",t:s.t,q,at:now()})}}}}
+  F.log=F.log.slice(0,14);return fundValue(S)}
 
 /* ---------- HR director: runs the people side of the company ---------- */
 function hrLog(S,m){S.hrLog.unshift({m,at:now()});S.hrLog=S.hrLog.slice(0,20)}
@@ -462,12 +526,17 @@ function importCode(str){str=String(str||"").trim();let json;
   if(!S||S.v!==3||!S.lots||!S.emps)throw new Error("That save is from an older version of the game and can't be loaded.");
   S=migrate(S);S.lastTick=Date.now();S.heartbeat=0;return S}
 function migrate(S){if(!S||S.v!==3)return fresh();const F=fresh();for(const k in F)if(S[k]===undefined)S[k]=F[k];
-  for(const d of STOCK_DEFS)if(!S.stocks.some(s=>s.t===d.t))S.stocks.push(mkStock(d));S.hr={...F.hr,...S.hr};S.fund={...F.fund,...S.fund};S.settings={...F.settings,...S.settings};S.clock={...F.clock,...S.clock};if(!S.lots[S.cur])S.cur="main";return S}
+  for(const d of STOCK_DEFS){const s=S.stocks.find(x=>x.t===d.t);if(!s)S.stocks.push(mkStock(d));else{s.sec=d.sec;s.div=d.div||0;s.vol=d.vol;s.n=d.n;s.drift=d.drift;if(!s.base)s.base=s.p;if(s.earnIn===undefined){scheduleEarnings(s);if(s.earnIn)s.earnIn=ri(4,30)}}}
+  S.stocks.sort((a,b)=>STOCK_DEFS.findIndex(d=>d.t===a.t)-STOCK_DEFS.findIndex(d=>d.t===b.t));
+  if(S.fund&&S.fund.cash===undefined){S.fund.cash=S.fund.value||0;S.fund.pos={};delete S.fund.value;delete S.fund.risk}
+  S.hr={...F.hr,...S.hr};S.fund={...F.fund,...S.fund};S.mkt={...F.mkt,...S.mkt};
+  for(const e of S.emps)if(e.role==="broker"&&!e.strat){e.strat="day";e.sector="tech"}
+  for(const[t,q]of Object.entries(S.port||{}))if(q>0&&!S.basis[t]){const st=S.stocks.find(x=>x.t===t);if(st)S.basis[t]=st.p}S.settings={...F.settings,...S.settings};S.clock={...F.clock,...S.clock};if(!S.lots[S.cur])S.cur="main";return S}
 
 G.TT={rnd,ri,pick,clamp,money,BIZ,SUPPORT,KINDS,isBiz,TIERS,LOTS,RANKS,AFFIRM,TRAITS,GEO,MAX_ST,MAX_DECOR,MAX_SUP,
   mkEmp,fairPay,xpNeed,trait,fresh,bizFloor,supFloor,lotDef,lotMult,lotTier,emp,lotSum,coSum,staffCap,hypeMult,maxFloors,
   floorCost,buildCost,stationCost,decorCost,supCost,hireFee,lotPrice,goal,rank,unlocked,arrivalsPerMin,revenue,present,speedF,svcTime,patience,
   capacityPerMin,registerCap,estPerMin,wagesPerMin,contractPerMin,estIncomePerMin,regTotal,portVal,netWorth,fee,avgRating,
-  unassign,assign,setManager,setRole,brokers,brokerCap,brokerSkill,brokerAcc,hrDirector,hrActive,RISK,STOCK_DEFS,spendPoint,emptyStations,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
+  unassign,assign,setManager,setRole,brokers,brokerCap,brokerSkill,brokerAcc,brokerAccOn,hrDirector,hrActive,RISK,STOCK_DEFS,SECTORS,PERKS,STRATS,deskLvl,hasPerk,fundValue,buyStock,sellStock,stockTimeToEarn,expectedMove,spendPoint,emptyStations,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
   genDeal,applyDeal,declineDeal,pruneDeals,timeLeft,offline,applyOffline,log,loadState,saveState,exportCode,importCode,migrate,onStateChange,pushAction,takeActions,onActions,gameOpen,KEY};
 })(typeof globalThis!=="undefined"?globalThis:self);

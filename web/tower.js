@@ -231,12 +231,26 @@ class TowerView{
       this.person(RX0+76+Math.sin(t/40)*6,fy,"#ff5d6c","#e0b48c","#1a1a1a",true)}
     if(f.type==="office"){for(let k=0;k<Math.min(5,1+f.lvl);k++){const dx=RX0+6+k*18;cx.fillStyle="#6b5a4a";cx.fillRect(dx,fy-5,12,1);cx.fillRect(dx+1,fy-4,1,4);cx.fillRect(dx+10,fy-4,1,4);
       cx.fillStyle="#22223a";cx.fillRect(dx+5,fy-10,6,5);cx.fillStyle=((t>>4)+k)%7===0?"#f2ecd8":"#5ad1ff";cx.fillRect(dx+6,fy-9,4,3);this.person(dx+2,fy-1,"#e8e0c8","#c68c5e","#2a1a10",false,"sit")}}
-    if(f.type==="trade"){cx.fillStyle="#05050c";cx.fillRect(RX0+1,y+3,ROOM-2,7);
-      const s=S.stocks.map(k=>{const c=(k.p/k.hist[k.hist.length-2]-1)*100;return{w:`${k.t}${c>=0?"^":"~"}${Math.abs(c).toFixed(1)}`,c:c>=0?"#5ee08a":"#ff5d6c"}});
-      const total=s.reduce((a,o)=>a+textW(o.w)+6,0);let x0=RX1-((t*.4)%total);cx.save();cx.beginPath();cx.rect(RX0+1,y+3,ROOM-2,7);cx.clip();
-      for(let rep=0;rep<3;rep++){let x=x0-rep*total;for(const o of s){if(x<RX1&&x+textW(o.w)>RX0)text(cx,o.w,x|0,y+4,o.c,false);x+=textW(o.w)+6}}cx.restore();
-      for(let k=0;k<4;k++){const mx=RX0+6+k*22;cx.fillStyle="#22223a";cx.fillRect(mx,fy-8,12,7);cx.fillStyle="#0a1a10";cx.fillRect(mx+1,fy-7,10,5);const st=S.stocks[(k+i)%6],h=st.hist.slice(-10),mn=Math.min(...h),mxv=Math.max(...h);
-        cx.fillStyle=h[h.length-1]>=h[0]?"#5ee08a":"#ff5d6c";h.forEach((v,j)=>cx.fillRect(mx+1+j,fy-3-Math.round((v-mn)/((mxv-mn)||1)*4),1,1))}}
+    if(f.type==="trade"){
+      // big board: live prices, or the latest headline in yellow when news just broke
+      cx.fillStyle="#05050c";cx.fillRect(RX0+1,y+3,ROOM-2,7);cx.save();cx.beginPath();cx.rect(RX0+1,y+3,ROOM-2,7);cx.clip();
+      const nw=S.mkt&&S.mkt.news[0],fresh=nw&&Date.now()-nw.at<25000;
+      let items=fresh?[{w:"NEWS: "+nw.h.replace(/[^A-Za-z0-9 .:%$!?/+-]/g,"").toUpperCase(),c:"#ffcc3d"}]:S.stocks.map(k=>{const c=(k.last||0)*100;return{w:`${k.t}${c>=0?"^":"~"}${Math.abs(c).toFixed(1)}`,c:c>=0?"#5ee08a":"#ff5d6c"}});
+      const total=items.reduce((a,o)=>a+textW(o.w)+8,0),sp=fresh?.5:.4;let x0=RX1-((t*sp)%total);
+      for(let rep=0;rep<3;rep++){let x=x0-rep*total;for(const o of items){if(x<RX1&&x+textW(o.w)>RX0)text(cx,o.w,x|0,y+4,o.c,false);x+=textW(o.w)+8}}cx.restore();
+      // market mood lamp + news bell
+      const r=S.stocks.filter(k=>!k.penny),avg=r.reduce((a2,k)=>a2+(k.last||0),0)/Math.max(1,r.length);
+      cx.fillStyle="#22223a";cx.fillRect(RX0+1,y+11,7,5);cx.fillStyle=avg>.004?"#5ee08a":avg<-.004?"#ff5d6c":"#9a95c2";if((t>>4)%2||Math.abs(avg)<.004)cx.fillRect(RX0+2,y+12,5,3);
+      if(fresh&&(t>>2)%2){cx.fillStyle="#ffcc3d";cx.fillRect(RX1-6,y+11,4,3);cx.fillRect(RX1-7,y+14,6,1);cx.fillRect(RX1-5,y+15,2,1)}
+      // broker desks: every broker sits at a desk watching the stock they hold
+      const bs=S.emps.filter(e=>e.role==="broker"),seats=Math.max(2,Math.min(5,(S.lots?Object.values(S.lots).reduce((a2,L)=>a2+L.floors.filter(q=>q.type==="trade").reduce((b2,q)=>b2+q.lvl,0),0):1)));
+      for(let k=0;k<seats;k++){const dx=RX0+12+k*17,e=bs[k],pos=e&&S.fund&&S.fund.pos[e.id],st=pos&&S.stocks.find(z=>z.t===pos.t);
+        cx.fillStyle="#6b5a4a";cx.fillRect(dx-1,fy-4,13,1);cx.fillRect(dx,fy-3,1,3);cx.fillRect(dx+10,fy-3,1,3);
+        cx.fillStyle="#22223a";cx.fillRect(dx+3,fy-11,9,7);cx.fillStyle="#0a1a10";cx.fillRect(dx+4,fy-10,7,5);
+        if(st){const h=st.hist.slice(-7),mn=Math.min(...h),mx=Math.max(...h);cx.fillStyle=st.p>=pos.cost?"#5ee08a":"#ff5d6c";h.forEach((v,j)=>cx.fillRect(dx+4+j,fy-6-Math.round((v-mn)/((mx-mn)||1)*3),1,1))}
+        else if(e){cx.fillStyle=(t>>4)%3===k%3?"#5ad1ff":"#1c3550";cx.fillRect(dx+5,fy-8,5,1)}
+        if(e){const cheer=pos&&st&&st.last>.02&&(t>>4)%4===k%4;this.person(dx,fy,"#2fbf71",e.skin,e.hair,false,cheer?"cheer":"sit")}
+        else{cx.fillStyle="#3d3a6e";cx.fillRect(dx,fy-3,3,1);cx.fillRect(dx,fy-6,1,3)}}}
     {const lt="L"+f.lvl;cx.fillStyle="rgba(10,10,24,.75)";cx.fillRect(RX0,y+2,textW(lt)+2,7);text(cx,lt,RX0+1,y+3,"#c9c4ea",false)}
   }
   drawRoof(top,light){const cx=this.cx,t=this.tick,cxm=TX+TW/2;

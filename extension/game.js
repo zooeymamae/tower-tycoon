@@ -107,7 +107,7 @@ function sig(){
   if(tab==="floor"){const f=S.lots[S.cur].floors[sel];return JSON.stringify([S.cur,sel,f,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl]),S.goalIdx].map(x=>x===undefined?0:x)).replace(/"register":[\d.]+,|"rating":[\d.]+,|"served":\d+,/g,"")}
   if(tab==="team")return JSON.stringify([TU,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl,e.pts,e.salary,e.role,e.promoReady,Math.round(e.mood/10),e.spd,e.chr,e.sta,praiseReady(e)]),S.applicants.map(a=>a.id),T.staffCap(S),S.hr,TU.sub==="hr"?S.hrLog[0]?.at:0,Object.keys(armed)]);
   if(tab==="inbox")return JSON.stringify([S.inbox.map(x=>x.id),S.deals.map(x=>x.id)]);
-  if(tab==="market")return JSON.stringify([mktSub,S.stocks.map(s=>s.p),S.port,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel,S.fund.alloc,S.fund.risk,S.fund.hist.length,S.fund.log[0]?.at,S.emps.filter(e=>e.role==="broker").map(e=>e.id),T.brokerCap(S)]);
+  if(tab==="market")return JSON.stringify([mktSub,S.stocks.map(s=>[s.p,s.rating,s.preview,s.earnIn]),S.port,S.basis,S.orders,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel,S.fund.alloc,S.fund.hist.length,S.fund.log[0]?.at,S.emps.filter(e=>e.role==="broker").map(e=>[e.id,e.strat,e.sector]),Object.keys(S.fund.pos),T.brokerCap(S),S.mkt.news[0]?.id,S.mkt.news.map(n=>n.in).join(""),Math.floor((Date.now()-(S.mkt.news[0]?.at||0))/60000)]);
   if(tab==="land")return JSON.stringify([Object.keys(S.lots),S.cur,S.landDiscount]);
   if(tab==="money")return String(S.chart.length)+Math.floor(Date.now()/10000);
   if(tab==="records")return String(S.goalIdx)+Math.floor(Date.now()/10000);
@@ -199,7 +199,7 @@ function assignSelect(lot,i,k){const opts=S.emps.filter(e=>e.role==="staff").sor
   return`<select data-act="assign" data-k="${k}"><option value="">Assign…</option>${opts.map(e=>`<option value="${e.id}">${esc(e.name)} · SPD ${e.spd} CHR ${e.chr}${e.fav===S.lots[lot].floors[i].type?" ♥":""} · ${e.loc?"moves from "+(e.loc.mgr?"manager":T.BIZ[S.lots[e.loc.lot].floors[e.loc.i].type].name):"free"}</option>`).join("")}</select>`}
 function vSupport(lot,i,f){const B=T.SUPPORT[f.type],c=f.lvl<T.MAX_SUP?T.supCost(f,lot):0;
   let effect={lounge:`${2*f.lvl} seats. Staff recover ${Math.round(100*(1+.25*(f.lvl-1)))}% faster per level here.`,marketing:`+${15*f.lvl}% customers on every business in ${T.lotDef(lot).name}. Hype grows over time.`,
-    training:`${2*f.lvl} seats. Trainees earn XP ${Math.round(30*(f.lvl-1))}% faster than at level 1.`,office:`Lets you employ ${3*f.lvl} more people (team cap is ${T.staffCap(S)}).`,trade:`${Math.round(Math.min(70,8*T.coSum(S,"trade")))}% chance of a tip every market update. Trading fee ${(T.fee(S)*100).toFixed(1)}%.`}[f.type];
+    training:`${2*f.lvl} seats. Trainees earn XP ${Math.round(30*(f.lvl-1))}% faster than at level 1.`,office:`Lets you employ ${3*f.lvl} more people (team cap is ${T.staffCap(S)}).`,trade:`${T.brokerCap(S)} broker seat${T.brokerCap(S)>1?"s":""}, ${Math.round(Math.min(70,8*T.deskLvl(S)))}% chance of a tip each update, ${(T.fee(S)*100).toFixed(1)}% trading fee. Unlocked: ${T.PERKS.filter(p=>T.hasPerk(S,p.l)).map(p=>p.n.toLowerCase()).join("; ")}.${T.PERKS.find(p=>!T.hasPerk(S,p.l))?` Next: ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).n.toLowerCase()} (company-wide desk level ${T.PERKS.find(p=>!T.hasPerk(S,p.l)).l}).`:""}`}[f.type];
   let h=`<div class="head"><h2>${B.name.toUpperCase()} · LV ${f.lvl}</h2><span class="pill">${T.lotDef(lot).name.toUpperCase()}</span></div><div class="muted">${B.desc}</div><div class="why good"><div><b>RIGHT NOW</b>${effect}</div></div>
     ${f.lvl<T.MAX_SUP?`<button data-act="supup" ${cost(c)}>UPGRADE TO LV ${f.lvl+1} · ${money(c)}</button>`:`<div class="up">Max level.</div>`}`;
   if(f.type==="lounge"||f.type==="training"){const who=S.emps.filter(e=>e.at&&e.at.lot===lot&&e.at.i===i);
@@ -331,37 +331,87 @@ V.inbox=()=>{
   return h+`</div>`};
 
 /* ===== MARKET ===== */
-let mktSub="stocks";
+let mktSub="market";
 const fmtP=p=>"$"+(p>=1?p.toFixed(2):p.toFixed(3));
-function spark(h,w=300,ht=80){if(h.length<2)h=[h[0]||0,h[0]||0];const mn=Math.min(...h),mx=Math.max(...h),pad=5,pts=h.map((v,i)=>[(i/(h.length-1)*(w-pad*2)+pad),(ht-pad-(v-mn)/((mx-mn)||1)*(ht-pad*2))]),col=h[h.length-1]>=h[0]?"#5ee08a":"#ff5d6c",last=pts[pts.length-1];
+const pct=(x,d=1)=>(x>=0?"+":"")+(x*100).toFixed(Math.abs(x)>=1?0:d)+"%";
+const mmss=s=>s==null?"–":Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0");
+const ago=t=>{const s=Math.floor((Date.now()-t)/1000);return s<60?s+"s ago":Math.floor(s/60)+"m ago"};
+function spark(h,w=300,ht=80,ref){if(h.length<2)h=[h[0]||0,h[0]||0];let mn=Math.min(...h),mx=Math.max(...h);if(ref){mn=Math.min(mn,ref);mx=Math.max(mx,ref)}
+  const pad=5,Y=v=>ht-pad-(v-mn)/((mx-mn)||1)*(ht-pad*2),pts=h.map((v,i)=>[(i/(h.length-1)*(w-pad*2)+pad),Y(v)]),col=h[h.length-1]>=(ref||h[0])?"#5ee08a":"#ff5d6c",last=pts[pts.length-1];
   return`<svg viewBox="0 0 ${w} ${ht}" width="100%" height="${ht}" preserveAspectRatio="none" style="display:block;background:#141428">${[.25,.5,.75].map(f=>`<line x1="0" x2="${w}" y1="${ht*f}" y2="${ht*f}" stroke="#2a2750"/>`).join("")}
+  ${ref?`<line x1="0" x2="${w}" y1="${Y(ref).toFixed(1)}" y2="${Y(ref).toFixed(1)}" stroke="#ffcc3d" stroke-dasharray="6 4" stroke-width="1.5"/>`:""}
   <polygon points="${pad},${ht} ${pts.map(p=>p.join(",")).join(" ")} ${w-pad},${ht}" fill="${col}" fill-opacity=".12"/><polyline points="${pts.map(p=>p.join(",")).join(" ")}" fill="none" stroke="${col}" stroke-width="2"/><rect x="${last[0]-3}" y="${last[1]-3}" width="6" height="6" fill="${col}"/></svg>`}
-V.market=()=>{const n=T.brokers(S).length;return`<div class="subtabs"><button data-act="mktsub" data-k="stocks" aria-pressed="${mktSub==="stocks"}">STOCKS</button><button data-act="mktsub" data-k="brokers" aria-pressed="${mktSub==="brokers"}">BROKERS ${n}/${T.brokerCap(S)}</button></div>`+(mktSub==="brokers"?vBrokers():vStocks())};
-function vStocks(){const st=S.stocks.find(s=>s.t===mktSel)||S.stocks[0],own=S.port[st.t]||0,tip=S.tips[st.t],fe=T.fee(S),maxBuy=Math.floor(Math.max(0,S.cash)/(st.p*(1+fe)));
-  let h=`<div class="head"><h2>STOCK MARKET</h2><span class="muted">Prices update every 20 seconds</span></div><div class="tbl"><table><tr><th>TICKER</th><th>PRICE</th><th>LAST</th><th>OWN</th><th>VALUE</th><th>TIP</th></tr>`;
-  S.stocks.forEach(s=>{const c=(s.p/s.hist[s.hist.length-2]-1)*100,t=S.tips[s.t],q=S.port[s.t]||0;
-    h+=`<tr data-act="stock" data-t="${s.t}" tabindex="0" style="cursor:pointer;${s.t===st.t?"background:#2a2750":""}"><td><b>${s.t}</b>${s.penny?` <span class="penny">PENNY</span>`:""}</td><td>${fmtP(s.p)}</td><td class="${c>=0?"up":"down"}">${c>=0?"▲":"▼"}${Math.abs(c)>=100?Math.round(Math.abs(c)):Math.abs(c).toFixed(1)}%</td><td>${q.toLocaleString()}</td><td>${q?money(q*s.p):"–"}</td><td>${t?(t>0?'<span class="up">▲ HOT</span>':'<span class="down">▼ COLD</span>'):"–"}</td></tr>`});
-  const pc=[.1,.25,.5];
-  h+=`</table></div><div class="card"><div class="row spread"><b>${st.n} (${st.t})${st.penny?` <span class="penny">PENNY</span>`:""}</b><span>${fmtP(st.p)}</span></div>${spark(st.hist)}
+function mini(h){h=h.slice(-20);const mn=Math.min(...h),mx=Math.max(...h),col=h[h.length-1]>=h[0]?"#5ee08a":"#ff5d6c";
+  return`<svg viewBox="0 0 60 16" width="60" height="16" aria-hidden="true"><polyline points="${h.map((v,i)=>`${(i/(h.length-1)*58+1).toFixed(1)},${(15-(v-mn)/((mx-mn)||1)*14).toFixed(1)}`).join(" ")}" fill="none" stroke="${col}" stroke-width="1.5"/></svg>`}
+const ratingTag=s=>s.rating==null?"–":s.rating>0?'<span class="rt buy">BUY</span>':s.rating<0?'<span class="rt sell">SELL</span>':'<span class="rt hold">HOLD</span>';
+function deskBanner(){const n=T.deskLvl(S);
+  if(!n)return`<div class="why warn"><div><b>NO TRADING DESK YET</b>You can still buy and sell, but a Trading Desk (any floor) unlocks tips, brokers, auto orders, analyst ratings, earnings previews and early news. Every level adds a broker seat and cuts fees.</div></div>`;
+  return`<div class="perks"><b>TRADING DESK LV ${n}</b>${T.PERKS.map(p=>`<span class="perk ${n>=p.l?"on":""}" title="${esc(p.n)}">${n>=p.l?"✓":"Lv"+p.l} ${esc(p.n)}</span>`).join("")}<span class="perk on">Fee ${(T.fee(S)*100).toFixed(1)}%</span></div>`}
+function moodOf(){const r=S.stocks.filter(s=>!s.penny),a=r.reduce((x,s)=>x+(s.last||0),0)/r.length+S.mkt.sent;return a>.006?["BULLISH","up"]:a<-.006?["BEARISH","down"]:["CALM","muted"]}
+V.market=()=>{if(mktSub==="stocks")mktSub="market";const n=T.brokers(S).length,pos=Object.values(S.port).filter(q=>q>0).length;
+  return`<div class="subtabs"><button data-act="mktsub" data-k="market" aria-pressed="${mktSub==="market"}">MARKET</button><button data-act="mktsub" data-k="portfolio" aria-pressed="${mktSub==="portfolio"}">PORTFOLIO${pos?" ("+pos+")":""}</button><button data-act="mktsub" data-k="brokers" aria-pressed="${mktSub==="brokers"}">BROKERS ${n}/${T.brokerCap(S)}</button></div>`+deskBanner()+(mktSub==="brokers"?vBrokers():mktSub==="portfolio"?vPortfolio():vMarketMain())};
+function newsList(items){return`<div class="news">${items.map(n=>`<div class="nw ${n.dir>0?"pos":"neg"}"><span class="nt">${n.dir>0?"▲":"▼"} ${n.t||(n.sec?T.SECTORS[n.sec].name.toUpperCase():"MARKET")}${n.big?" · BIG":""}</span><span class="nh">${esc(n.h)}</span><span class="na">${n.in>0?`<i class="pend">HITS ${n.in>1?"IN 2 UPDATES":"NEXT UPDATE"}</i>`:ago(n.at)}</span></div>`).join("")||`<div class="muted">No news yet. Headlines arrive every minute or two.</div>`}</div>`}
+function vMarketMain(){const st=S.stocks.find(s=>s.t===mktSel)||S.stocks[0];mktSel=st.t;const L3=T.hasPerk(S,3),mood=moodOf();
+  let h=`<div class="row spread"><h3>LATEST NEWS</h3><span class="muted">Market mood: <b class="${mood[1]}">${mood[0]}</b></span></div>${newsList(S.mkt.news.slice(0,4))}
+  <div class="muted">News moves prices on the next update, so you get about 20 seconds to react. Prices update every 20 seconds.</div>
+  ${stockDetail(st)}<h3>ALL STOCKS</h3>
+  <div class="tbl"><table class="stocks"><tr><th>STOCK</th><th>PRICE</th><th>LAST</th><th></th><th>${L3?"ANALYSTS":"🔒 RATING"}</th><th>EARNINGS</th><th>OWN</th></tr>`;
+  for(const[sk,sec]of Object.entries(T.SECTORS)){const list=S.stocks.filter(s=>s.sec===sk);if(!list.length)continue;const m=sk==="penny"?0:(S.mkt.sec[sk]||0);
+    h+=`<tr class="sech"><td colspan="7"><span class="swatch" style="background:${sec.color}"></span> ${sec.name.toUpperCase()} ${Math.abs(m)>.004?`<span class="${m>0?"up":"down"}">${m>0?"▲ hot":"▼ cold"}</span>`:""}</td></tr>`;
+    for(const s of list){const q=S.port[s.t]||0,tip=S.tips[s.t],te=T.stockTimeToEarn(S,s);
+      h+=`<tr data-act="stock" data-t="${s.t}" tabindex="0" class="${s.t===st.t?"sel":""}"><td><b>${s.t}</b>${s.penny?' <span class="penny">PENNY</span>':""}${s.div?' <span class="divb">DIV</span>':""}${tip?` <span class="${tip>0?"up":"down"}">${tip>0?"▲TIP":"▼TIP"}</span>`:""}</td>
+      <td>${fmtP(s.p)}</td><td class="${(s.last||0)>=0?"up":"down"}">${pct(s.last||0)}</td><td>${mini(s.hist)}</td><td>${L3?ratingTag(s):"–"}</td>
+      <td>${te==null?"–":L(()=>mmss(T.stockTimeToEarn(S,s)))}${s.preview!=null?` <span class="${s.preview>0?"up":"down"}">${s.preview>0?"BEAT?":"MISS?"}</span>`:""}</td><td>${q?q.toLocaleString():"–"}</td></tr>`}}
+  h+=`</table></div>`;return h}
+function stockDetail(st){const own=S.port[st.t]||0,b=S.basis[st.t],fe=T.fee(S),maxBuy=Math.floor(Math.max(0,S.cash)/(st.p*(1+fe))),te=T.stockTimeToEarn(S,st),o=S.orders[st.t]||{},L2=T.hasPerk(S,2);
+  const news=S.mkt.news.filter(n=>n.t===st.t||(n.kind==="sec"&&n.sec===st.sec)).slice(0,2);const lo=Math.min(...st.hist),hi=Math.max(...st.hist);
+  let h=`<div class="card sdet"><div class="row spread"><div><b class="sname">${esc(st.n)} (${st.t})</b> <span class="muted">${T.SECTORS[st.sec].name}</span></div><div><b class="sname">${fmtP(st.p)}</b> <span class="${(st.last||0)>=0?"up":"down"}">${pct(st.last||0)}</span></div></div>
+   ${spark(st.hist,300,90,own?b:null)}
+   <div class="chipsrow"><span class="chip">Range ${fmtP(lo)}–${fmtP(hi)}</span><span class="chip">${st.penny?"Wild":st.vol>.05?"Very jumpy":st.vol>.03?"Jumpy":st.vol>.018?"Normal":"Steady"}</span>
+   ${st.div?`<span class="chip divc">Pays ${(st.div*100).toFixed(2)}% every 5 min</span>`:""}${te!=null?`<span class="chip">Earnings in ${L(()=>mmss(T.stockTimeToEarn(S,st)))}</span>`:""}
+   ${T.hasPerk(S,3)?`<span class="chip">Analysts: ${ratingTag(st)}</span>`:""}${st.preview!=null?`<span class="chip ${st.preview>0?"up":"down"}">Preview: likely to ${st.preview>0?"beat":"miss"}</span>`:te!=null&&!T.hasPerk(S,4)?`<span class="chip muted">🔒 Earnings preview at desk Lv4</span>`:""}</div>
    ${st.penny?`<div class="why warn"><div><b>WILD CARD</b>Penny stocks swing hard. Now and then one rockets 2–6×, then usually slides back within a few minutes. Some crash. Cash out a moonshot fast.</div></div>`:""}
-   <div class="muted">You own ${own.toLocaleString()} (${money(own*st.p)}) · fee ${(fe*100).toFixed(1)}%</div>${tip?`<div class="${tip>0?"up":"down"}">Your desk thinks ${st.t} will ${tip>0?"rise":"drop"} next.</div>`:""}
-   <div class="row"><span class="muted lbl">BUY</span>${pc.map(p=>`<button class="green" data-act="buy" data-p="${p}" ${Math.floor(Math.max(0,S.cash)*p/(st.p*(1+fe)))<1?"disabled":""}>${p*100}% OF CASH</button>`).join("")}<button class="green" data-act="buy" data-p="1" ${maxBuy<1?"disabled":""}>MAX</button></div>
-   <div class="row"><span class="muted lbl">SELL</span>${[.25,.5].map(p=>`<button class="red" data-act="sell" data-p="${p}" ${Math.floor(own*p)<1?"disabled":""}>${p*100}%</button>`).join("")}<button class="red" data-act="sell" data-p="1" ${!own?"disabled":""}>ALL</button></div></div>
-   <div class="muted">Portfolio ${money(T.portVal(S))}. A Trading Desk gives you tips about the next move, and lets you hire brokers.</div>`;return h}
+   ${news.length?newsList(news):""}
+   ${own?`<div class="tiles"><div class="tile"><span>You own</span><b>${own.toLocaleString()}</b></div><div class="tile"><span>Avg cost</span><b>${fmtP(b)}</b></div><div class="tile"><span>Value</span><b>${money(own*st.p)}</b></div><div class="tile"><span>Profit</span><b class="${st.p>=b?"up":"down"}">${money(own*(st.p-b))} (${pct(st.p/b-1)})</b></div></div><div class="muted">Gold dashed line on the chart = your average cost.</div>`:`<div class="muted">You don't own any ${st.t}. Fee ${(fe*100).toFixed(1)}% per trade.</div>`}
+   <div class="row"><span class="muted lbl">BUY</span>${[.1,.25,.5].map(p=>`<button class="green" data-act="buy" data-p="${p}" ${Math.floor(Math.max(0,S.cash)*p/(st.p*(1+fe)))<1?"disabled":""}>${p*100}% OF CASH</button>`).join("")}<button class="green" data-act="buy" data-p="1" ${maxBuy<1?"disabled":""}>MAX</button></div>
+   <div class="row"><span class="muted lbl">SELL</span>${[.25,.5].map(p=>`<button class="red" data-act="sell" data-p="${p}" ${Math.floor(own*p)<1?"disabled":""}>${p*100}%</button>`).join("")}<button class="red" data-act="sell" data-p="1" ${!own?"disabled":""}>ALL</button></div>`;
+  if(L2)h+=`<div class="sec"><h3>AUTO ORDERS</h3><div class="muted">Your desk sells everything automatically when the price hits your target, measured from your average cost.</div>
+    <div class="row"><span class="muted lbl">TAKE PROFIT</span>${[0,.1,.25,.5,1].map(v=>`<button class="${(o.tp||0)===v?"cyan":"ghost"}" data-act="order" data-k="tp" data-v="${v}">${v?"+"+v*100+"%":"OFF"}</button>`).join("")}</div>
+    <div class="row"><span class="muted lbl">STOP LOSS</span>${[0,.1,.2,.35].map(v=>`<button class="${(o.sl||0)===v?"pink":"ghost"}" data-act="order" data-k="sl" data-v="${v}">${v?"−"+v*100+"%":"OFF"}</button>`).join("")}</div>
+    ${own&&(o.tp||o.sl)?`<div class="muted">Sells at ${o.tp?fmtP(b*(1+o.tp)):""}${o.tp&&o.sl?" or ":""}${o.sl?fmtP(b*(1-o.sl)):""}.</div>`:""}</div>`;
+  else h+=`<div class="muted">🔒 Stop-loss and take-profit orders unlock at Trading Desk Lv2.</div>`;
+  return h+`</div>`}
+function vPortfolio(){const rows=S.stocks.filter(s=>(S.port[s.t]||0)>0);let val=0,unr=0;rows.forEach(s=>{const q=S.port[s.t];val+=q*s.p;unr+=q*(s.p-(S.basis[s.t]||s.p))});
+  let h=`<div class="tiles"><div class="tile"><span>Your stocks</span><b>${money(val)}</b></div><div class="tile"><span>Unrealized</span><b class="${unr>=0?"up":"down"}">${unr>=0?"+":""}${money(unr)}</b></div><div class="tile"><span>Realized</span><b class="${(S.realized||0)>=0?"up":"down"}">${(S.realized||0)>=0?"+":""}${money(S.realized||0)}</b></div>
+    <div class="tile"><span>Dividends</span><b class="up">${money(S.divPaid||0)}</b></div><div class="tile"><span>Broker fund</span><b>${money(T.fundValue(S))}</b></div><div class="tile"><span>Next dividends</span><b>${L(()=>mmss(300-(S.mkt.divT||0)-(S.clock.mkt||0)))}</b></div></div>`;
+  if(!rows.length)return h+`<div class="card"><b>You don't own any stocks yet.</b><div class="muted">Pick one in the Market tab. Dividend stocks (DIV) pay you every 5 minutes just for holding them.</div></div>`;
+  const bySec={};rows.forEach(s=>bySec[s.sec]=(bySec[s.sec]||0)+S.port[s.t]*s.p);
+  h+=`<div class="secbar">${Object.entries(bySec).map(([k,v])=>`<i style="width:${v/val*100}%;background:${T.SECTORS[k].color}" title="${T.SECTORS[k].name} ${Math.round(v/val*100)}%"></i>`).join("")}</div>
+  <div class="row">${Object.entries(bySec).map(([k,v])=>`<span class="muted"><span class="swatch" style="background:${T.SECTORS[k].color}"></span> ${T.SECTORS[k].name} ${Math.round(v/val*100)}%</span>`).join("")}</div>
+  <div class="tbl"><table><tr><th>STOCK</th><th>SHARES</th><th>AVG COST</th><th>PRICE</th><th>VALUE</th><th>PROFIT</th><th>ORDERS</th></tr>
+  ${rows.map(s=>{const q=S.port[s.t],b=S.basis[s.t]||s.p,o=S.orders[s.t]||{};return`<tr data-act="gostock" data-t="${s.t}" tabindex="0"><td><b>${s.t}</b>${s.div?' <span class="divb">DIV</span>':""}</td><td>${q.toLocaleString()}</td><td>${fmtP(b)}</td><td>${fmtP(s.p)}</td><td>${money(q*s.p)}</td><td class="${s.p>=b?"up":"down"}">${money(q*(s.p-b))} ${pct(s.p/b-1)}</td><td>${o.tp?"+"+o.tp*100+"% ":""}${o.sl?"−"+o.sl*100+"%":""}${!o.tp&&!o.sl?"–":""}</td></tr>`}).join("")}</table></div>
+  <div class="muted">Tap a row to trade it or set auto orders.</div>`;return h}
 function vBrokers(){const F=S.fund,cap=T.brokerCap(S),bs=T.brokers(S);
-  let h=`<div class="muted">Brokers invest a share of your cash for you every market update. Better brokers (speed, charm, level) read the market correctly more often. They keep 15% of their winnings.</div>`;
+  let h=`<div class="muted">Brokers invest part of your money for you. Each one follows a strategy you choose. Better brokers (speed, charm, level) read the market right more often, and a bigger Trading Desk helps too. They keep 20% of what they make.</div>`;
   if(!cap)return h+`<div class="why warn"><div><b>YOU NEED A TRADING DESK</b>Every Trading Desk level gives you one broker seat. Build one on any floor.</div></div>`;
-  h+=`<div class="tiles"><div class="tile"><span>Fund value</span><b class="up">${L(()=>money(S.fund.value))}</b></div><div class="tile"><span>Last trade</span><b>${L(()=>({html:`<span class="${S.fund.last>=0?"up":"down"}">${S.fund.last>=0?"+":""}${money(S.fund.last)}</span>`}))}</b></div><div class="tile"><span>All-time</span><b>${L(()=>({html:`<span class="${(S.fund.total||0)>=0?"up":"down"}">${(S.fund.total||0)>=0?"+":""}${money(S.fund.total||0)}</span>`}))}</b></div></div>
+  h+=`<div class="tiles"><div class="tile"><span>Fund value</span><b class="up">${L(()=>money(T.fundValue(S)))}</b></div><div class="tile"><span>Last update</span><b>${L(()=>({html:`<span class="${S.fund.last>=0?"up":"down"}">${S.fund.last>=0?"+":""}${money(S.fund.last)}</span>`}))}</b></div><div class="tile"><span>All-time</span><b>${L(()=>({html:`<span class="${(S.fund.total||0)>=0?"up":"down"}">${(S.fund.total||0)>=0?"+":""}${money(S.fund.total||0)}</span>`}))}</b></div></div>
   ${F.hist.length>1?spark(F.hist,300,70):""}
   <div class="sec"><h3>HOW MUCH THEY INVEST</h3><div class="seg seg5">${[0,.1,.25,.4,.5].map(a=>`<button data-act="alloc" data-a="${a}" aria-pressed="${Math.abs(F.alloc-a)<.001}">${a*100}%<small>${a?"of your money":"pause"}</small></button>`).join("")}</div>
-    <div class="muted">They top up or hand back cash each update so the fund stays at this share of your money (cash plus fund).${bs.length?"":" Nothing is invested until you assign a broker."}</div></div>
-  <div class="sec"><h3>RISK</h3><div class="seg seg3">${Object.entries(T.RISK).map(([k,r])=>`<button data-act="risk" data-k="${k}" aria-pressed="${F.risk===k}">${r.name.toUpperCase()}<small>${r.desc}</small></button>`).join("")}</div></div>
+    <div class="muted">Each update they top up or hand back cash so the fund stays at this share of your money (cash plus fund).</div></div>
   <div class="sec"><h3>YOUR BROKERS ${bs.length}/${cap}</h3>`;
-  bs.forEach((e,i)=>{const on=i<cap;h+=`<div class="slot">${ava(e)}<div class="who"><b>${esc(e.name)} <span class="muted">Lv${e.lvl}</span></b><div class="muted">${on?`Reads the market right ${Math.round(T.brokerAcc(S,e)*100)}% of the time`:"No seat. Upgrade a Trading Desk."} · ${e.trades||0} trades · <span class="${(e.pnl||0)>=0?"up":"down"}">${money(e.pnl||0)}</span></div></div><div class="acts"><button class="ghost" data-act="unassign" data-id="${e.id}">REMOVE</button></div></div>`});
+  bs.forEach((e,i)=>{const on=i<cap,p=F.pos[e.id],ps=p&&S.stocks.find(x=>x.t===p.t),strat=T.STRATS[e.strat]?e.strat:"day";
+    const acc=Math.round(Math.min(.8,T.brokerAcc(S,e)+(strat==="sector"?.035:strat==="dividend"?.02:0))*100);
+    h+=`<div class="bcard">${ava(e)}<div class="who"><div class="row spread"><b>${esc(e.name)} <span class="muted">Lv${e.lvl}</span></b><span class="${(e.pnl||0)>=0?"up":"down"}">${(e.pnl||0)>=0?"+":""}${money(e.pnl||0)} · ${e.trades||0} closed</span></div>
+      <div class="row"><select data-act="bstrat" data-id="${e.id}">${Object.entries(T.STRATS).map(([k,s])=>`<option value="${k}" ${strat===k?"selected":""}>${s.name}</option>`).join("")}</select>
+      ${strat==="sector"?`<select data-act="bsector" data-id="${e.id}">${Object.entries(T.SECTORS).filter(([k])=>k!=="penny").map(([k,s])=>`<option value="${k}" ${e.sector===k?"selected":""}>${s.name}</option>`).join("")}</select>`:""}
+      <span class="muted">${on?(strat==="penny"?"Penny stocks are mostly luck":`Reads right ~${acc}%`):"No seat. Upgrade a Trading Desk."}</span></div>
+      <div class="muted">${esc(T.STRATS[strat].desc)}</div>
+      <div class="bpos">${ps?`Holding <b>${p.q.toLocaleString()} ${p.t}</b> · bought at ${fmtP(p.cost)} · <span class="${ps.p>=p.cost?"up":"down"}">${pct(ps.p/p.cost-1)} (${money(p.q*(ps.p-p.cost))})</span>`:on?`<span class="muted">In cash, waiting for a good buy.</span>`:""}</div></div>
+      <div class="acts"><button class="ghost" data-act="unassign" data-id="${e.id}">REMOVE</button></div></div>`});
   if(bs.length<cap){const c=S.emps.filter(e=>e.role==="staff"||e.role==="manager").sort((a,b)=>T.brokerSkill(b)-T.brokerSkill(a));
-    h+=c.length?`<select data-act="mkbrokersel"><option value="">Add a broker (${cap-bs.length} seat${cap-bs.length>1?"s":""} open)…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · would read right ${Math.round(T.brokerAcc(S,e)*100)}% · ${esc(shortWhere(e))}</option>`).join("")}</select><div class="muted">Brokers leave their current job. Their pay goes up 30%.</div>`:`<div class="muted">Hire someone to be a broker.</div>`}
-  h+=`</div>${F.value>=1?`<button class="ghost" data-act="withdraw">WITHDRAW EVERYTHING (${money(F.value)})</button>`:""}
-  <div class="sec"><h3>RECENT TRADES</h3><div class="log">${F.log.length?F.log.slice(0,8).map(x=>`<div><b>${esc(x.n)}</b> bought ${x.t}: <span class="${x.p>=0?"up":"down"}">${x.r>=0?"+":""}${(x.r*100).toFixed(1)}% · ${x.p>=0?"+":""}${money(x.p)}</span></div>`).join(""):`<div class="muted">No trades yet. Brokers trade every 20 seconds.</div>`}</div></div>`;
+    h+=c.length?`<select data-act="mkbrokersel"><option value="">Add a broker (${cap-bs.length} seat${cap-bs.length>1?"s":""} open)…</option>${c.map(e=>`<option value="${e.id}">${esc(e.name)} · reads right ~${Math.round(T.brokerAcc(S,e)*100)}% · ${esc(shortWhere(e))}</option>`).join("")}</select><div class="muted">Brokers leave their current job. Their pay goes up 30%.</div>`:`<div class="muted">Hire someone to be a broker.</div>`}
+  h+=`</div>${T.fundValue(S)>=1?`<button class="ghost" data-act="withdraw">SELL EVERYTHING AND WITHDRAW (${money(T.fundValue(S))})</button>`:""}
+  <div class="sec"><h3>RECENT TRADES</h3><div class="log">${F.log.length?F.log.slice(0,10).map(x=>x.a==="bought"?`<div><b>${esc(x.n)}</b> bought ${x.q.toLocaleString()} ${x.t}</div>`:`<div><b>${esc(x.n)}</b> sold ${x.t} at ${pct(x.r)}: <span class="${x.p>=0?"up":"down"}">${x.p>=0?"+":""}${money(x.p)}</span></div>`).join(""):`<div class="muted">No trades yet. Brokers act every 20 seconds.</div>`}</div></div>`;
   return h}
 
 /* ===== LAND ===== */
@@ -461,11 +511,10 @@ const ACT={
     S.emps.forEach(x=>x.mood=Math.max(0,x.mood-5));T.log(S,`Let ${e.name} go.`);act("bad",`${first(e)} packed up. The team is a little shaken.`)},
   inbox:d=>{const r=T.resolveInbox(S,rt,d.id,d.a);if(!r.ok){SFX.play("bad");return toast(r.msg)}act(d.a==="deny"?"click":"up",r.msg)},
   deal:d=>{if(d.y==="1"){const r=T.applyDeal(S,d.id);if(!r.ok){SFX.play("bad");return toast(r.msg)}act("deal",r.msg)}else{T.declineDeal(S,d.id);act("click")}},
-  stock:d=>{mktSel=d.t;act("click")},
+  stock:d=>{mktSel=d.t;act("click");document.querySelector(".sdet")?.scrollIntoView({block:"start"})},
   mktsub:d=>{mktSub=d.k;act("click");$("#body").scrollTop=0},
   alloc:d=>{S.fund.alloc=+d.a;act("click",+d.a?`Brokers will keep ${+d.a*100}% of your money invested.`:"Brokers paused. They'll hand the fund back at the next update.")},
-  risk:d=>{S.fund.risk=d.k;act("click")},
-  withdraw:()=>{S.cash+=S.fund.value;const v=S.fund.value;S.fund.value=0;S.fund.alloc=0;act("cash",`${money(v)} moved back to cash. Investing is paused.`)},
+  withdraw:()=>{const F=S.fund;for(const p of Object.values(F.pos)){const s=S.stocks.find(x=>x.t===p.t);if(s)F.cash+=p.q*s.p*(1-.004)}F.pos={};const v=F.cash;S.cash+=v;F.cash=0;F.alloc=0;act("cash",`${money(v)} moved back to cash. Investing is paused.`)},
   mkbrokersel:(d,el)=>{if(!el.value)return;ACT.mkbroker({id:el.value})},
   mkbroker:d=>{if(T.brokers(S).length>=T.brokerCap(S))return toast("No broker seats. Upgrade a Trading Desk.");const e=T.emp(S,d.id);T.setRole(S,d.id,"broker");act("fanfare",`${first(e)} is now a broker!`)},
   mkhrsel:(d,el)=>{if(!el.value)return;ACT.mkhr({id:el.value})},
@@ -481,8 +530,12 @@ const ACT={
   praiseall:()=>{let n=0;S.emps.forEach(e=>{if(praiseReady(e)&&e.mood<80){e.praisedAt=Date.now();e.mood=Math.min(100,e.mood+15);e.low=Math.max(0,e.low-60);n++}});act("up",`You thanked ${n} people. Smiles all around.`)},
   spendall:()=>{let n=0;S.emps.forEach(e=>{while(e.pts>0){if(!T.spendPoint(e))break;e.pts--;n++}});act("level",`Spent ${n} skill point${n>1?"s":""}: speed first, then charm, then stamina.`)},
   fillall:()=>{let n=0;for(const e of S.emps.filter(e=>e.role==="staff"&&e.state==="idle")){const es=T.emptyStations(S),b=es.find(x=>x.f.type===e.fav)||es[0];if(!b)break;T.assign(S,e.id,b.lot,b.i,b.k);n++}act("coin",`${n} empty station${n>1?"s":""} filled.`)},
-  buy:d=>{const st=S.stocks.find(s=>s.t===mktSel),fe=T.fee(S),q=Math.floor(Math.max(0,S.cash)*+d.p/(st.p*(1+fe))),c=q*st.p*(1+fe);if(q<1||S.cash<c)return;S.cash-=c;S.port[st.t]=(S.port[st.t]||0)+q;act("coin",`Bought ${q.toLocaleString()} ${st.t} for ${money(c)}.`)},
-  sell:d=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,q=+d.p>=1?own:Math.floor(own*+d.p);if(q<1)return;const v=q*st.p*(1-T.fee(S));S.cash+=v;S.port[st.t]=own-q;act("cash",`Sold ${q.toLocaleString()} ${st.t} for ${money(v)}.`)},
+  buy:d=>{const st=S.stocks.find(s=>s.t===mktSel),fe=T.fee(S),q=Math.floor(Math.max(0,S.cash)*+d.p/(st.p*(1+fe)));const r=T.buyStock(S,st.t,q);if(!r)return;act("coin",`Bought ${q.toLocaleString()} ${st.t} for ${money(r.cost)}.`)},
+  sell:d=>{const st=S.stocks.find(s=>s.t===mktSel),own=S.port[st.t]||0,q=+d.p>=1?own:Math.floor(own*+d.p);const r=T.sellStock(S,st.t,q);if(!r)return;act(r.pnl>=0?"cash":"bad",`Sold ${q.toLocaleString()} ${st.t} for ${money(r.value)} (${r.pnl>=0?"+":""}${money(r.pnl)}).`)},
+  order:d=>{const o=S.orders[mktSel]||(S.orders[mktSel]={});o[d.k]=+d.v;if(!o.tp&&!o.sl)delete S.orders[mktSel];act("click",+d.v?`${d.k==="tp"?"Take profit":"Stop loss"} set at ${d.k==="tp"?"+":"−"}${+d.v*100}%.`:"Order cleared.")},
+  gostock:d=>{mktSel=d.t;mktSub="market";act("click");document.querySelector(".sdet")?.scrollIntoView({block:"start"})},
+  bstrat:(d,el)=>{const e=T.emp(S,d.id);e.strat=el.value;act("click",`${first(e)} is now a ${T.STRATS[el.value].name.toLowerCase()}.`)},
+  bsector:(d,el)=>{const e=T.emp(S,d.id);e.sector=el.value;act("click",`${first(e)} now specializes in ${T.SECTORS[el.value].name}.`)},
   visit:d=>{goLot(d.l);setTab("floor")},
   buylot:d=>{const l=T.lotDef(d.l),p=T.lotPrice(S,l);if(S.cash<p)return;S.cash-=p;S.spent+=l.price;S.landDiscount=0;S.lots[l.id]={floors:[{type:null},{type:null}]};
     T.log(S,`Bought ${l.name}!`);note({kind:"milestone",title:"NEW PROPERTY!",text:`Welcome to ${l.name}. ${l.blurb}`,sfx:"fanfare"});goLot(l.id);setTab("floor")},
@@ -504,7 +557,7 @@ body.addEventListener("change",e=>{const s=e.target.closest("select[data-act]");
   if(e.target.id==="imp-file"&&e.target.files[0]){const r=new FileReader();r.onload=()=>{saveUI.imp=String(r.result);dirty=true;render();toast("Save file loaded. Tap LOAD THIS SAVE.")};r.readAsText(e.target.files[0])}});
 body.addEventListener("input",e=>{if(e.target.id==="tsearch"){TU.q=e.target.value;const q=TU.q.trim().toLowerCase();body.querySelectorAll(".erow").forEach(r=>r.hidden=!!q&&!r.dataset.name.includes(q))}
   if(e.target.id==="imp-code"){const had=!!saveUI.imp.trim();saveUI.imp=e.target.value;const b=body.querySelector('[data-act="importsave"]');if(b)b.disabled=!saveUI.imp.trim();if(had!==!!saveUI.imp.trim())lastSig=sig()}});
-body.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("tr[data-act]"))ACT.stock(e.target.dataset)});
+body.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("tr[data-act]"))ACT[e.target.dataset.act]?.(e.target.dataset)});
 addEventListener("pointerdown",()=>{pointerDown=true;SFX.unlock()});addEventListener("pointerup",()=>setTimeout(()=>pointerDown=false,50));
 body.addEventListener("focusin",e=>{if(e.target.tagName==="SELECT")pointerDown=true});body.addEventListener("focusout",e=>{if(e.target.tagName==="SELECT")pointerDown=false});
 
