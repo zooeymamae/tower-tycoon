@@ -182,7 +182,10 @@ function vBiz(lot,i,f){
       <div class="muted">${ab[0]}: ${ab[1]}. Recharges in 5 minutes.</div>`}
   else{const el=S.emps.filter(e=>e.lvl>=3&&e.role!=="manager"&&T.homeOf(e)===lot);
     h+=`<div class="muted">No manager. You collect the register yourself, and this floor only fills its register while you're away. Anyone level 3+ can be promoted. They leave their station to manage.</div>
-    ${el.length?`<select data-act="mgr"><option value="">Promote someone…</option>${el.map(e=>`<option value="${e.id}">${esc(e.name)} · Lv${e.lvl}${e.promoReady?" · wants this!":""}</option>`).join("")}</select>`:`<div class="muted">Nobody is level 3 yet. Staff level up by serving customers or in a Training Room.</div>`}`}
+    ${el.length?`<select data-act="mgr"><option value="">Promote someone…</option>${el.map(e=>`<option value="${e.id}">${esc(e.name)} · Lv${e.lvl}${e.promoReady?" · wants this!":""}</option>`).join("")}</select>`:`<div class="muted">Nobody at ${esc(T.lotDef(lot).name)} is level 3 yet. Staff level up by serving customers or in a Training Room.</div>`}`;
+    const far=S.emps.filter(e=>e.lvl>=3&&(e.role==="staff"||e.role==="manager")&&T.homeOf(e)!==lot).sort((a,b)=>b.lvl-a.lvl),room=T.roomAt(S,lot)>0;
+    if(far.length)h+=`<div class="muted">${room?"Or bring in an experienced worker from another property. They move here and take over this floor.":`Experienced workers from your other properties could run this, but ${esc(T.lotDef(lot).name)} is full. Build or upgrade an HR Office here first.`}</div>
+      <select data-act="mgrmove" ${room?"":"disabled"}><option value="">Bring in a manager…</option>${far.map(e=>`<option value="${e.id}">${esc(e.name)} · Lv${e.lvl} · from ${esc(T.lotDef(T.homeOf(e)).name)}${e.role==="manager"?" (manages there now)":""}</option>`).join("")}</select>`}
   h+=`</div>`;
   // price
   h+=`<div class="sec"><h3>PRICES</h3><div class="seg">${T.TIERS.map((t,k)=>`<button data-act="price" data-k="${k}" aria-pressed="${f.price===k}">${t.name.toUpperCase()}<small>${money(B.price*t.mult*T.lotMult(lot,f.type)*(1+f.decor*.15))} each · ${Math.round(t.demand*100)}% crowd</small></button>`).join("")}</div>
@@ -515,6 +518,8 @@ const ACT={
     else{f.buff={kind:m.ability,until:Date.now()+60e3};toast(m.ability==="rush"?"Rush hour! Double customers for 60 seconds.":"Happy hour! +50% revenue for 60 seconds.")}act("up")},
   hire:d=>{const a=S.applicants.find(x=>x.id===d.id),fee=T.hireFee(a),lot=d.l&&S.lots[d.l]?d.l:S.cur;if(S.cash<fee||T.roomAt(S,lot)<=0)return;S.cash-=fee;a.home=lot;S.emps.push(a);S.applicants=S.applicants.filter(x=>x!==a);
     T.log(S,`Hired ${a.name} at ${T.lotDef(lot).name}.`);act("coin",`Welcome aboard, ${first(a)}! They'll work at ${T.lotDef(lot).name}. Give them a station on the Floor tab.`)},
+  mgrmove:(d,el)=>{if(!el.value)return;const e=T.emp(S,el.value),lot=S.cur;if(T.roomAt(S,lot)<=0)return toast(`${T.lotDef(lot).name} is full.`);
+    const from=T.lotDef(T.homeOf(e)).name;T.unassign(S,e.id);e.home=lot;T.setManager(S,e.id,lot,sel);act("fanfare",`${first(e)} moved from ${from} to manage the ${T.BIZ[S.lots[lot].floors[sel].type].name}!`)},
   moveemp:(d,el)=>{if(!el.value)return;const e=T.emp(S,d.id),to=el.value;if(T.roomAt(S,to)<=0)return toast(`${T.lotDef(to).name} is full.`);
     const wasHr=e.role==="hr";if(e.role!=="broker")T.unassign(S,d.id);if(wasHr&&T.hrDirector(S,to)){e.role="staff";e.state="idle"}e.home=to;
     act("coin",`${first(e)} moved to ${T.lotDef(to).name}.${wasHr&&e.role!=="hr"?" That tower already has an HR Director, so they're regular staff there.":""}`)},

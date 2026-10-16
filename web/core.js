@@ -183,8 +183,8 @@ function unassign(S,id){const e=emp(S,id);if(!e)return;
 function assign(S,id,lot,i,slot){const e=emp(S,id),f=S.lots[lot].floors[i];if(!e||!isBiz(f.type))return false;
   const cur=f.staff[slot];if(cur&&cur!==id)unassign(S,cur);unassign(S,id);f.staff[slot]=id;e.loc={lot,i,slot};e.state="work";e.role="staff";return true}
 function setManager(S,id,lot,i){const e=emp(S,id),f=S.lots[lot].floors[i];if(!e||!isBiz(f.type))return false;
-  if(f.manager)unassign(S,f.manager);unassign(S,id);f.manager=id;e.loc={lot,i,mgr:true};e.state="manage";e.role="manager";e.promoReady=false;
-  e.salary=Math.round(Math.max(e.salary,fairPay(e))*1.5*100)/100;return true}
+  const was=e.role==="manager";if(f.manager)unassign(S,f.manager);unassign(S,id);f.manager=id;e.loc={lot,i,mgr:true};e.state="manage";e.role="manager";e.promoReady=false;
+  if(!was)e.salary=Math.round(Math.max(e.salary,fairPay(e))*1.5*100)/100;return true}
 /* brokers and the HR director are employees who leave the floor for a special job */
 function setRole(S,id,role){const e=emp(S,id);if(!e)return false;unassign(S,id);e.role=role;e.state=role;e.promoReady=false;
   if(role==="broker"){e.strat=e.strat||"day";e.sector=e.sector||{cafe:"food",burger:"food",dining:"food",arcade:"tech",boutique:"finance",spa:"energy"}[e.fav]||"tech"}
