@@ -108,7 +108,7 @@ th{font-family:var(--pix);font-size:8px;color:var(--dim);font-weight:normal}
 .thumb::after{content:"";position:absolute;left:38%;width:24%;bottom:8px;height:60%;background:repeating-linear-gradient(#55507f 0 3px,#2a2750 3px 7px)}
 .thumb .gr{position:absolute;left:0;right:0;bottom:0;height:8px}
 .toggle{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:2px solid var(--line)}
-.notes{position:fixed;top:12px;right:12px;display:flex;flex-direction:column;gap:8px;z-index:50;width:min(340px,calc(100vw - 24px));pointer-events:none}
+.notes{position:fixed;bottom:12px;right:12px;display:flex;flex-direction:column-reverse;gap:8px;z-index:50;width:min(340px,calc(100vw - 24px));pointer-events:none}
 .note{background:var(--panel);border:3px solid var(--line);padding:10px;box-shadow:4px 4px 0 #000;animation:slidein .25s steps(4);pointer-events:auto;cursor:pointer}
 .note b{display:block;font-family:var(--pix);font-size:10px;line-height:1.5;margin-bottom:4px;font-weight:normal}
 .note p{margin:0;font-size:19px}

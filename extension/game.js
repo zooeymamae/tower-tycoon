@@ -1,6 +1,17 @@
 /* Tower Tycoon game page v3: runs the live sim and the management UI */
+/* if anything breaks, say so on screen instead of silently freezing */
+(()=>{let shown=0;const show=m=>{if(shown++>2)return;let d=document.getElementById("crash");if(!d){d=document.createElement("div");d.id="crash";
+  d.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#2a0f14;color:#ffd0d6;border:3px solid #ff5d6c;padding:10px;font:14px monospace;white-space:pre-wrap;max-height:40vh;overflow:auto";document.body.appendChild(d)}
+  d.textContent="Something broke. Try reloading (for the extension: reload it in chrome://extensions after replacing ALL its files). Send this to fix it:\n\n"+m}
+  addEventListener("error",e=>show((e.message||"")+"\n"+(e.error?.stack||"").split("\n").slice(0,4).join("\n")));
+  addEventListener("unhandledrejection",e=>show(String(e.reason?.stack||e.reason).split("\n").slice(0,4).join("\n")))})();
 (async()=>{
 const T=globalThis.TT,$=s=>document.querySelector(s),money=T.money;
+// pages from older versions may be missing newer elements: add them so new code never trips over them
+if(!globalThis.Cloud){const load=src=>new Promise(r=>{const sc=document.createElement("script");sc.src=src;sc.onload=sc.onerror=r;document.head.appendChild(sc)});await load("cloud-config.js");await load("cloud.js")}
+if(!globalThis.Cloud)globalThis.Cloud={ready:false,acct:null,loadAcct:async()=>null,shown:x=>x,deviceName:()=>""};
+if(!$("#world")){const c=document.createElement("canvas");c.id="world";c.setAttribute("aria-hidden","true");document.body.prepend(c)}
+if(!$("#tower-hint")){const h=document.querySelector(".towerbox .hint");if(h)h.id="tower-hint";else{const d=document.createElement("div");d.id="tower-hint";d.className="hint";$("#towerbox")?.appendChild(d)}}
 const ME="game-"+Math.random().toString(36).slice(2,7);
 let hideAt=0;
 let S=await T.loadState()||T.fresh();
@@ -15,7 +26,7 @@ const first=e=>e.name.split(" ")[0];
 /* ---------- tower view ---------- */
 const curShop=()=>S.curShop&&S.shops?.[S.curShop]?S.curShop:null;
 const view=new TowerView($("#tower"),()=>S,()=>S.cur,{minH:200,getRT:()=>rt,getTime:()=>((Date.now()/240000)+.3)%1,getShop:curShop,transparent:true,fit:$("#towerscroll")});
-new WorldView($("#world"),view);
+if(globalThis.WorldView)new WorldView($("#world"),view);
 view.sel=sel;
 $("#tower").addEventListener("click",e=>{if(curShop()){SFX.play("click");return setTab("floor")}const i=view.hit(e.clientY);if(i<0)return;sel=i;view.sel=i;
   const f=S.lots[S.cur].floors[i];if(T.isBiz(f.type)&&f.register>0&&!f.manager)collect(S.cur,i);else SFX.play("click");setTab("floor")});
@@ -60,7 +71,7 @@ function toast(m){document.querySelectorAll(".toast").forEach(t=>t.remove());con
 function note(n){if(n.sfx)SFX.play(n.sfx);
   const el=document.createElement("div");el.className="note "+n.kind;el.innerHTML="<b></b><p></p>";el.querySelector("b").textContent=n.title;el.querySelector("p").textContent=n.text;
   el.onclick=()=>{if(n.kind==="deal"||/UNHAPPY/.test(n.title))setTab("inbox");else if(/LEVEL/.test(n.title))setTab("team");el.classList.add("out");setTimeout(()=>el.remove(),300)};
-  const box=$("#notes");box.prepend(el);while(box.children.length>4)box.lastChild.remove();
+  const box=$("#notes");box.prepend(el);while(box.children.length>3)box.lastChild.remove();
   setTimeout(()=>{el.classList.add("out");setTimeout(()=>el.remove(),300)},n.kind==="milestone"?8000:5000);
   if(n.kind==="milestone"){const h=$("#hud .rank");h.classList.remove("flash");void h.offsetWidth;h.classList.add("flash")}
   if(document.hidden&&S.settings.notify&&hasNotif&&["big","milestone","deal","bad"].includes(n.kind))try{chrome.notifications.create({type:"basic",iconUrl:"icons/icon128.png",title:"Tower Tycoon: "+n.title,message:n.text,priority:1})}catch(e){}}
