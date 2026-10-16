@@ -74,7 +74,7 @@ class TowerView{
 
   drawShopScene(k,S,GY,t){const cx=this.cx,o=this.shopCv,ox=o.getContext("2d"),sh=S.shops?.[k];ox.clearRect(0,0,120,64);
     drawShop(ox,k,sh?.lvl||1,t,sh?.color||T.SHOPS[k].color,T.promoOn(S,k),true);cx.drawImage(o,30,GY-52);
-    for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}}
+    if(!this.transparent)for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}}
   person(x,y,shirt,skin,hair,walking,pose){const cx=this.cx,t=this.tick;x=Math.round(x);
     // 3px wide, 8px tall: hair, face, shirt, legs. y is the floor line.
     cx.fillStyle=skin;cx.fillRect(x,y-7,3,2);if(hair){cx.fillStyle=hair;cx.fillRect(x,y-8,3,1);cx.fillRect(x,y-7,1,1)}
@@ -116,7 +116,7 @@ class TowerView{
     const tod=((this.getTime()%1)+1)%1,sunH=Math.sin((tod-.25)*Math.PI*2);
     if(t%3600===1)this.rain=Math.random()<.15;
     let light=clamp((sunH+.15)/.75);if(this.rain)light*=.7;const warm=clamp(1-Math.abs(sunH)/.35)*(th.earth?0:1);
-    this.env={th,light,warm,tod,sunH,t,rep:S.rep,rain:this.rain};
+    this.env={th,light,warm,tod,sunH,t,rep:S.rep,rain:this.rain,key:shop?"shop:"+shop:id,shop:!!shop};
     const tr=this.transparent;if(tr)cx.clearRect(0,0,W,H);
     const bands=th.night.length,bh=Math.ceil(LY/bands)+1;
     if(!tr)for(let i=0;i<bands;i++){let c=mix(th.night[i],th.day[i],light);if(warm)c=mix(c,"#ff8a4a",warm*.45*(i+1)/bands);cx.fillStyle=c;cx.fillRect(0,i*bh,W,bh)}
@@ -143,7 +143,7 @@ class TowerView{
     else{cx.fillStyle=mix(shade(th.walk,-30),th.walk,light);cx.fillRect(0,GY,W,5);cx.fillStyle=shade(th.walk,-50);for(let x=0;x<W;x+=8)cx.fillRect(x,GY+4,1,1);
       if(!th.craters){cx.fillStyle="#ffcc3d";for(let x=0;x<W;x+=12)cx.fillRect(x,GY+15,6,1)}
       else{cx.fillStyle=shade(th.ground,-35);[[8,GY+12],[60,GY+18],[110,GY+10],[160,GY+20]].forEach(([x,y])=>{cx.fillRect(x,y,9,2);cx.fillRect(x+2,y-1,5,1)})}}
-    for(const c of this.cars){c.x+=c.v;if(c.x>W+16)c.x=-16;if(c.x<-16)c.x=W+16;const y=c.v>0?GY+16:GY+10,x=Math.round(c.x);
+    if(!tr)for(const c of this.cars){c.x+=c.v;if(c.x>W+16)c.x=-16;if(c.x<-16)c.x=W+16;const y=c.v>0?GY+16:GY+10,x=Math.round(c.x);
       if(c.c==="#d8d8e0"){cx.fillStyle=c.c;cx.fillRect(x,y-4,10,3);cx.fillStyle="#555";cx.fillRect(x+1,y-1,2,2);cx.fillRect(x+7,y-1,2,2);cx.fillStyle="#9a95c2";cx.fillRect(x+4,y-7,1,3);continue}
       cx.fillStyle=c.c;cx.fillRect(x,y-4,12,3);cx.fillRect(x+3,y-6,6,2);cx.fillStyle=mix("#141428","#9ad8ff",light);cx.fillRect(x+4,y-6,4,1);cx.fillStyle="#141428";cx.fillRect(x+2,y-1,2,2);cx.fillRect(x+8,y-1,2,2);
       if(light<.5){cx.fillStyle="#fff1c0";const fx=c.v>0?x+12:x-1;cx.fillRect(fx,y-3,1,1);cx.globalAlpha=.18;cx.fillRect(c.v>0?fx+1:fx-10,y-4,10,3);cx.globalAlpha=1}}
@@ -164,7 +164,7 @@ class TowerView{
     // floors
     fl.forEach((f,i)=>{try{this.drawFloor(f,i,light,S,id,rt)}catch(e){console.error(e)}});
     // sidewalk pedestrians are drawn after the building so they walk in front of it
-    for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;if(Math.abs(p.x-door)<.4&&Math.random()<.4){p.x=p.v>0?-4:W+4;this.enter=8}this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}
+    if(!tr)for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;if(Math.abs(p.x-door)<.4&&Math.random()<.4){p.x=p.v>0?-4:W+4;this.enter=8}this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}
     // construction
     for(const k in this.cons){const i=+k;if(i>=fl.length){delete this.cons[k];continue}const y=this.floorY(i),left=this.cons[k]--;
       cx.fillStyle="rgba(20,20,40,.55)";cx.fillRect(RX0,y+2,ROOM,FH-3);cx.fillStyle="#ff9b4a";
@@ -376,13 +376,32 @@ G.drawShop=drawShop;
 /* ---------- the world behind the page: the current property's sky and street, stretched across the whole screen
    and lined up pixel-for-pixel with the tower canvas so the tower sits inside one continuous scene ---------- */
 class WorldView{
-  constructor(canvas,view){this.cv=canvas;this.cx=canvas.getContext("2d");this.view=view;this.loop=this.loop.bind(this);requestAnimationFrame(this.loop)}
+  constructor(canvas,view,street){this.cv=canvas;this.cx=canvas.getContext("2d");this.view=view;this.st=street||null;this.sx=street?street.getContext("2d"):null;
+    this.peds=[];this.cars=[];this.key=null;this.loop=this.loop.bind(this);requestAnimationFrame(this.loop)}
+  /* people and cars live on the full-width street, so they walk and drive in from the edges of the screen */
+  populate(E,Wl){const th=E.th,n=Math.min(60,Math.round((3+Math.sqrt(E.rep||0)/3)*Wl/180));
+    const shirt=()=>th.suits?"#f2ecd8":SHIRTS[Math.random()*SHIRTS.length|0],pk=a=>a[Math.random()*a.length|0];
+    this.peds=Array.from({length:n},()=>({x:Math.random()*Wl,v:(.2+Math.random()*.3)*(Math.random()<.5?-1:1),shirt:shirt(),skin:pk(["#f2d1b0","#c68c5e","#7a4a30","#e0b48c"]),hair:pk(["#2a1a10","#c98a3a","#1a1a1a"]),lane:Math.random()<.5?0:2}));
+    const nc=Math.round((th.cars||0)*Wl/180);
+    this.cars=Array.from({length:nc},(_,k)=>({x:Math.random()*Wl,v:(.5+Math.random()*.5)*(k%2?-1:1),c:th.rover?"#d8d8e0":pk(["#ff5d6c","#5ad1ff","#5ee08a","#ffcc3d","#f2ecd8","#b78cff"])}));this.popW=Wl}
+  drawStreet(E,Wl,Hl,GY,ox){const cx=this.sx;if(!cx)return;cx.clearRect(0,0,Wl,Hl);const{light,t}=E,v=this.view;
+    if(this.key!==E.key||Math.abs((this.popW||0)-Wl)>40){this.key=E.key;this.populate(E,Wl)}
+    for(const c of this.cars){c.x+=c.v;if(c.x>Wl+16)c.x=-16;if(c.x<-16)c.x=Wl+16;const y=c.v>0?GY+16:GY+10,x=Math.round(c.x);
+      if(c.c==="#d8d8e0"){cx.fillStyle=c.c;cx.fillRect(x,y-4,10,3);cx.fillStyle="#555";cx.fillRect(x+1,y-1,2,2);cx.fillRect(x+7,y-1,2,2);cx.fillStyle="#9a95c2";cx.fillRect(x+4,y-7,1,3);continue}
+      cx.fillStyle=c.c;cx.fillRect(x,y-4,12,3);cx.fillRect(x+3,y-6,6,2);cx.fillStyle=mix("#141428","#9ad8ff",light);cx.fillRect(x+4,y-6,4,1);cx.fillStyle="#141428";cx.fillRect(x+2,y-1,2,2);cx.fillRect(x+8,y-1,2,2);
+      if(light<.5){cx.fillStyle="#fff1c0";const fx=c.v>0?x+12:x-1;cx.fillRect(fx,y-3,1,1);cx.globalAlpha=.18;cx.fillRect(c.v>0?fx+1:fx-10,y-4,10,3);cx.globalAlpha=1}}
+    const door=ox+TX+TW/2;
+    for(const p of this.peds){p.x+=p.v;if(p.x>Wl+4)p.x=-4;if(p.x<-4)p.x=Wl+4;
+      if(!E.shop&&Math.abs(p.x-door)<.4&&Math.random()<.4){p.x=p.v>0?-4:Wl+4;v.enter=8}
+      const x=Math.round(p.x),y=GY+2+p.lane;cx.fillStyle=p.skin;cx.fillRect(x,y-7,3,2);cx.fillStyle=p.hair;cx.fillRect(x,y-8,3,1);cx.fillRect(x,y-7,1,1);cx.fillStyle=p.shirt;cx.fillRect(x,y-5,3,3);
+      cx.fillStyle="#22223a";const s=(t>>3)%2;cx.fillRect(x+s,y-2,1,2);cx.fillRect(x+2-s,y-2,1,1)}}
   loop(){try{this.draw()}catch(e){console.error(e)}requestAnimationFrame(this.loop)}
   draw(){const v=this.view,E=v.env;if(!E)return;const r=v.cv.getBoundingClientRect();if(!r.width)return;
     const s=r.width/W,vw=innerWidth,vh=innerHeight,ox=Math.ceil(r.left/s),oy=Math.ceil(r.top/s),Wl=Math.ceil(vw/s)+2,Hl=Math.ceil(vh/s)+2;
     const cv=this.cv;if(cv.width!==Wl||cv.height!==Hl){cv.width=Wl;cv.height=Hl}
     const left=(r.left-ox*s)+"px",top=(r.top-oy*s)+"px",cw=Wl*s+"px",ch=Hl*s+"px";
-    if(cv.style.left!==left)cv.style.left=left;if(cv.style.top!==top)cv.style.top=top;if(cv.style.width!==cw)cv.style.width=cw;if(cv.style.height!==ch)cv.style.height=ch;
+    for(const c of this.st?[cv,this.st]:[cv]){if(c.width!==Wl||c.height!==Hl){c.width=Wl;c.height=Hl}
+      if(c.style.left!==left)c.style.left=left;if(c.style.top!==top)c.style.top=top;if(c.style.width!==cw)c.style.width=cw;if(c.style.height!==ch)c.style.height=ch}
     const cx=this.cx,{th,light,warm,tod,sunH,t}=E,GY=oy+v.cv.height-GROUND,H=Hl;cx.imageSmoothingEnabled=false;
     // sky
     const bands=th.night.length,bh=Math.ceil(GY/bands)+1;
@@ -414,6 +433,7 @@ class WorldView{
       if(!th.craters){cx.fillStyle="#ffcc3d";for(let x=0;x<Wl;x++)if(sx(x)<6)cx.fillRect(x,GY+15,1,1);
         cx.fillStyle=mix(shade(th.walk,-40),shade(th.walk,-15),light);cx.fillRect(0,GY+21,Wl,5)}
       else{cx.fillStyle=shade(th.ground,-35);for(let i=0;i<Wl/40;i++){const x=(i*67+13)%Wl,y=GY+8+(i*29)%Math.max(8,(H-GY-12));cx.fillRect(x,y,9,2);cx.fillRect(x+2,y-1,5,1)}}}
+    this.drawStreet(E,Wl,H,GY,ox);
   }}
 G.WorldView=WorldView;
 G.TowerView=TowerView;G.TOWER_THEMES=Object.fromEntries(Object.entries(THEMES).map(([k,v])=>[k,{...v,sky:v.night,skyDay:v.day}]));G.pixelShort=short;G.pixelText=text;

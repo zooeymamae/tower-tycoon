@@ -11,6 +11,7 @@ const T=globalThis.TT,$=s=>document.querySelector(s),money=T.money;
 if(!globalThis.Cloud){const load=src=>new Promise(r=>{const sc=document.createElement("script");sc.src=src;sc.onload=sc.onerror=r;document.head.appendChild(sc)});await load("cloud-config.js");await load("cloud.js")}
 if(!globalThis.Cloud)globalThis.Cloud={ready:false,acct:null,loadAcct:async()=>null,shown:x=>x,deviceName:()=>""};
 if(!$("#world")){const c=document.createElement("canvas");c.id="world";c.setAttribute("aria-hidden","true");document.body.prepend(c)}
+if(!$("#street")){const c=document.createElement("canvas");c.id="street";c.setAttribute("aria-hidden","true");$("#world").after(c)}
 if(!$("#tower-hint")){const h=document.querySelector(".towerbox .hint");if(h)h.id="tower-hint";else{const d=document.createElement("div");d.id="tower-hint";d.className="hint";$("#towerbox")?.appendChild(d)}}
 const ME="game-"+Math.random().toString(36).slice(2,7);
 let hideAt=0;
@@ -26,7 +27,7 @@ const first=e=>e.name.split(" ")[0];
 /* ---------- tower view ---------- */
 const curShop=()=>S.curShop&&S.shops?.[S.curShop]?S.curShop:null;
 const view=new TowerView($("#tower"),()=>S,()=>S.cur,{minH:200,getRT:()=>rt,getTime:()=>((Date.now()/240000)+.3)%1,getShop:curShop,transparent:true,fit:$("#towerscroll")});
-if(globalThis.WorldView)new WorldView($("#world"),view);
+if(globalThis.WorldView)new WorldView($("#world"),view,$("#street"));
 view.sel=sel;
 $("#tower").addEventListener("click",e=>{if(curShop()){SFX.play("click");return setTab("floor")}const i=view.hit(e.clientY);if(i<0)return;sel=i;view.sel=i;
   const f=S.lots[S.cur].floors[i];if(T.isBiz(f.type)&&f.register>0&&!f.manager)collect(S.cur,i);else SFX.play("click");setTab("floor")});

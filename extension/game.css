@@ -259,3 +259,6 @@ input.shopname:focus{outline:none;border-color:var(--gold)}
 .swatches{gap:6px;margin-top:6px}
 .swatches .sw{width:28px;height:28px;min-width:0;padding:0;border:3px solid var(--line)}
 .swatches .sw.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--gold)}
+/* street layer: people and cars walk in front of the tower but behind the panels */
+#street{position:fixed;left:0;top:0;z-index:1;image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none}
+.hud,.panel,.lotbar,.towerfoot,.hint{position:relative;z-index:2}
