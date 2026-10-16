@@ -1,0 +1,12 @@
+rules_version = '2';
+// Tower Tycoon: each player can only read and write their own company at saves/{their uid}.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /saves/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.code is string
+        && request.resource.data.code.size() < 1000000;
+    }
+  }
+}

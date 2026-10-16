@@ -21,6 +21,23 @@ The site is deployed from this repo by Render using `render.yaml`. Your progress
 
 Everything comes with you: cash, towers, staff, stocks and rank. The same steps move a save to another browser or device.
 
+## Accounts (play one company on every device)
+
+Players can make an account in **⚙ Settings → Account** with a username (or email) and password. Their company then saves to the cloud every minute and whenever they close the game, and signing in on another device picks it up. If two devices both played, the game asks which company to keep instead of overwriting one.
+
+Accounts use a free Firebase project (Authentication + Cloud Firestore on the free Spark plan). Until it's set up, the Account section just says accounts aren't switched on, and save codes still work.
+
+### Turn on accounts (one time, about 5 minutes)
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com), click **Create a project**, name it (e.g. `tower-tycoon`) and finish. Google Analytics isn't needed.
+2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
+3. **Build → Firestore Database → Create database.** Pick any location, start in **production mode**.
+4. In Firestore, open the **Rules** tab, replace everything with the contents of [`firestore.rules`](firestore.rules), and click **Publish**.
+5. **Project settings (gear icon) → General.** Under "Your apps" click the **web icon `</>`**, give it a nickname, and register it (no hosting needed). Copy `apiKey` and `projectId` from the config it shows.
+6. Paste them into `web/cloud-config.js`, run `./sync-extension.sh`, and push. Render redeploys the website; reload the extension in `chrome://extensions`.
+
+These two values are meant to be public. The Firestore rules are what keep each player's save private.
+
 ## Deploy to Render (one time)
 
 1. Sign in at [render.com](https://render.com) with GitHub.
@@ -35,4 +52,4 @@ Everything comes with you: cash, towers, staff, stocks and rank. The same steps 
 
 ## Changing the game
 
-Edit the files in `web/`, then run `./sync-extension.sh` to copy the shared files into `extension/`.
+Edit the files in `web/`, then run `./sync-extension.sh` to copy the shared files (including `cloud-config.js`) into `extension/`.

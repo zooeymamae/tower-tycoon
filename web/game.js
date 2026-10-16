@@ -2,7 +2,10 @@
 (async()=>{
 const T=globalThis.TT,$=s=>document.querySelector(s),money=T.money;
 const ME="game-"+Math.random().toString(36).slice(2,7);
+let hideAt=0;
 let S=await T.loadState()||T.fresh();
+await Cloud.loadAcct();
+const bootBeat=S.heartbeat||0;
 const rt=T.newRT();
 let tab="floor",sel=0,mktSel="PXLS",dirty=true,lastSig="",pointerDown=false,armed={};
 const hasNotif=typeof chrome!=="undefined"&&chrome.notifications;
@@ -35,7 +38,8 @@ let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(saveNow,400)}
 function saveNow(){clearTimeout(saveT);S.heartbeat=Date.now();return T.saveState(S,ME)}
 setInterval(saveNow,5000);
-document.addEventListener("visibilitychange",()=>{if(document.hidden)saveNow()});
+setInterval(()=>{if(!document.hidden)cloudSync()},60000);
+document.addEventListener("visibilitychange",()=>{if(document.hidden){hideAt=Date.now();saveNow();cloudSync({keepalive:true})}else cloudStart(hideAt)});
 addEventListener("pagehide",()=>saveNow());
 async function processActions(){const acts=await T.takeActions();for(const a of acts){
   if(a.type==="deal"){const r=a.yes?T.applyDeal(S,a.id):(T.declineDeal(S,a.id),{ok:true,msg:"Passed on the deal."});note({kind:r.ok?"good":"bad",title:a.yes?(r.ok?"DEAL CLOSED":"DEAL FAILED"):"DEAL PASSED",text:r.msg,sfx:r.ok&&a.yes?"deal":"click"})}
@@ -111,7 +115,7 @@ function sig(){
   if(tab==="land")return JSON.stringify([Object.keys(S.lots),S.cur,S.landDiscount]);
   if(tab==="money")return String(S.chart.length)+Math.floor(Date.now()/10000);
   if(tab==="records")return String(S.goalIdx)+Math.floor(Date.now()/10000);
-  return tab+JSON.stringify(S.settings)+(armed.reset||0)+(armed.imp||0)+saveUI.code.length+"|"+saveUI.at+"|"+(saveUI.imp.trim()?1:0)}
+  return tab+JSON.stringify(S.settings)+(armed.reset||0)+(armed.imp||0)+saveUI.code.length+"|"+saveUI.at+"|"+(saveUI.imp.trim()?1:0)+"|"+cloudSig()}
 
 function hud(){
   $("#h-cash").textContent=money(S.cash);
@@ -469,7 +473,7 @@ V.records=()=>{const nw=T.netWorth(S),g=T.goal(S.goalIdx),prev=S.goalIdx?T.goal(
   h+=`</div><h3>COMPANY LOG</h3><div class="log">${S.log.slice(0,30).map(l=>`<div>${esc(l)}</div>`).join("")}</div>`;return h};
 
 /* ===== SETTINGS ===== */
-V.settings=()=>`<h3>SETTINGS</h3>
+V.settings=()=>`${vAccount()}<h3>SETTINGS</h3>
   <div class="toggle"><span>Sound effects</span><button data-act="set" data-k="sound" class="${S.settings.sound?"green":"ghost"}">${S.settings.sound?"ON":"OFF"}</button></div>
   ${hasNotif?`<div class="toggle"><span>Desktop alerts for deals and big moments</span><button data-act="set" data-k="notify" class="${S.settings.notify?"green":"ghost"}">${S.settings.notify?"ON":"OFF"}</button></div>`:""}
   <div class="toggle"><span>Tutorial</span><button class="cyan" data-act="tut">REPLAY</button></div>
@@ -486,6 +490,76 @@ V.settings=()=>`<h3>SETTINGS</h3>
     <button class="${armed.imp?"red":"green"}" data-act="importsave" ${saveUI.imp.trim()?"":"disabled"}>${armed.imp?"TAP AGAIN: REPLACE MY COMPANY":"LOAD THIS SAVE"}</button></div>
   <div class="muted">Loading a save replaces the company in this browser.</div></div>`;
 const saveUI={code:"",at:"",imp:""};
+
+/* ---------- accounts: one company, any device ---------- */
+const CU={name:"",pass:"",busy:"",err:"",pending:false};
+const cloudSig=()=>[Cloud.ready,!!Cloud.acct,Cloud.acct?.expired,CU.busy,CU.err,CU.pending,!!CU.name.trim()&&!!CU.pass].join(",");
+const cAgo=t=>{const s=Math.round((Date.now()-t)/1000);return s<10?"just now":s<60?s+"s ago":s<3600?Math.round(s/60)+" min ago":s<86400?Math.round(s/3600)+" hr ago":Math.round(s/86400)+" days ago"};
+function vAccount(){
+  if(!Cloud.ready)return`<div class="sec acct"><h3>ACCOUNT</h3><div class="muted">Accounts aren't switched on for this copy of the game yet, so your company only lives in this browser. Use the save code below to move it for now.</div></div>`;
+  const a=Cloud.acct;
+  if(a&&!a.expired)return`<div class="sec acct"><h3>ACCOUNT</h3>
+    <div class="row spread"><span>☁ Signed in as <b class="tl">${esc(Cloud.shown(a.email))}</b></span><span class="muted">${L(()=>CU.busy?CU.busy:a.lastSync?"Saved to cloud "+cAgo(a.lastSync):"Not saved yet")}</span></div>
+    <div class="muted">Sign in with the same name and password on any device to keep playing this company. It saves to the cloud every minute and when you close the game.</div>
+    ${CU.err?`<div class="down">${esc(CU.err)}</div>`:""}
+    <div class="row"><button class="green" data-act="cloudsave" ${CU.busy?"disabled":""}>SAVE NOW</button><button class="ghost" data-act="cloudpull" ${CU.busy?"disabled":""}>LOAD FROM CLOUD</button><button class="ghost" data-act="signout">SIGN OUT</button></div></div>`;
+  return`<div class="sec acct"><h3>ACCOUNT</h3>
+    <div class="muted">${a&&a.expired?"Your sign-in expired. Sign in again to keep saving to the cloud.":"Make an account to play the same company on your phone, laptop or the extension. Your progress here comes with you."}</div>
+    <form class="acctform" onsubmit="return false">
+      <input id="acc-name" autocomplete="username" placeholder="Username or email" value="${esc(CU.name)}" maxlength="80">
+      <input id="acc-pass" type="password" autocomplete="current-password" placeholder="Password (6+ characters)" value="${esc(CU.pass)}" maxlength="128">
+    </form>
+    ${CU.err?`<div class="down">${esc(CU.err)}</div>`:""}
+    <div class="row"><button class="green" data-act="signin" ${CU.busy||!CU.name.trim()||!CU.pass?"disabled":""}>${CU.busy==="Signing in…"?CU.busy:"SIGN IN"}</button><button class="cyan" data-act="signup" ${CU.busy||!CU.name.trim()||!CU.pass?"disabled":""}>${CU.busy==="Creating…"?CU.busy:"CREATE ACCOUNT"}</button></div>
+    <div class="muted">A username works fine. Write your password down: with a username there's no email to reset it.</div></div>`}
+
+/* Swap in a company from somewhere else (a save code or the cloud) and give it its offline earnings. */
+function loadCompany(ns,title,text){S=ns;rt.f={};rt.earn=[];sel=0;view.sel=0;saveUI.imp="";saveUI.code="";SFX.enabled=S.settings.sound;
+  const o=T.offline(S);T.applyOffline(S,o||{mins:0,earned:0,filled:0});S.lastTick=Date.now();
+  saveNow();view.rebuild();toBottom();note({kind:"milestone",title,text:text||`Welcome back, boss. ${T.rank(S)} with ${money(T.netWorth(S))} net worth.`,sfx:"fanfare"});setTab("floor")}
+
+async function cloudSync({manual=false,keepalive=false}={}){const a=Cloud.acct;if(!Cloud.ready||!a||a.expired||CU.pending||(CU.busy&&!keepalive))return;
+  if(!keepalive){CU.busy="Saving…";dirty=true}
+  try{await saveNow();const r=await Cloud.push(S,{keepalive});CU.err="";if(r.conflict!==undefined)cloudChoice(r.conflict,"conflict");else if(manual){SFX.play("coin");toast("Saved to the cloud.")}}
+  catch(e){CU.err=Cloud.acct?.expired?"":e.message;if(manual)toast(e.message)}
+  CU.busy="";dirty=true}
+
+/* Ask which company to keep when this device and the cloud disagree. */
+function cloudChoice(remote,why){if(!remote){Cloud.push(S,{force:true}).then(()=>{dirty=true}).catch(e=>{CU.err=e.message;dirty=true});return}
+  let rs=null;try{rs=T.importCode(remote.code)}catch(e){}
+  CU.pending=true;dirty=true;const root=$("#modal-root");
+  const head=why==="signin"?["YOUR ACCOUNT","WHICH COMPANY?","This account already has a company saved. Which one do you want to play?"]
+    :why==="conflict"?["CLOUD SAVE","PLAYED SOMEWHERE ELSE","Your company was saved from another device while this one was open. Which one should continue?"]
+    :["CLOUD SAVE","NEWER SAVE FOUND","You've played on another device since this one last saved. Which company do you want?"];
+  root.innerHTML=`<div class="modal"><div class="event" role="dialog" aria-modal="true"><span class="tag">${head[0]}</span><h2>${head[1]}</h2><p>${head[2]}</p>
+    <div class="cchoice"><div class="card"><b class="tl">IN THE CLOUD</b><div class="big">${money(remote.nw)}</div><div class="muted">${esc(remote.rank)} · saved ${cAgo(remote.at)}<br>from ${esc(remote.device||"another device")}</div></div>
+    <div class="card"><b class="tl">ON THIS DEVICE</b><div class="big">${money(T.netWorth(S))}</div><div class="muted">${esc(T.rank(S))} · playing now<br>${esc(Cloud.deviceName())}</div></div></div>
+    ${rs?"":`<p class="down">The cloud save couldn't be read, so keeping this device's company is the safe choice.</p>`}
+    <div class="row"><button id="cc-cloud" ${rs?"":"disabled"}>PLAY THE CLOUD ONE</button><button id="cc-here" class="ghost">KEEP THIS ONE</button></div>
+    <div class="muted">The one you don't pick is replaced.</div></div></div>`;
+  const done=()=>{root.innerHTML="";CU.pending=false;dirty=true};
+  $("#cc-cloud").onclick=async()=>{done();await Cloud.adopt(remote);loadCompany(rs,"CLOUD SAVE LOADED")};
+  $("#cc-here").onclick=async()=>{done();try{await saveNow();await Cloud.push(S,{force:true});toast("This company is now your cloud save.")}catch(e){CU.err=e.message;toast(e.message)}dirty=true};
+  ($("#cc-cloud").disabled?$("#cc-here"):$("#cc-cloud")).focus()}
+
+/* On startup: grab a newer company from another device, or upload this one. */
+async function cloudStart(beat){const a=Cloud.acct;if(!Cloud.ready||!a||a.expired)return;
+  try{const remote=await Cloud.pull();
+    if(!remote){await Cloud.push(S,{force:true});dirty=true;return}
+    if(remote.updateTime===a.base)return cloudSync();
+    // This device hasn't been played since its last cloud save, so the newer cloud company simply wins.
+    if(a.base&&a.lastSync&&beat<=a.lastSync+70000){let rs;try{rs=T.importCode(remote.code)}catch(e){return cloudChoice(remote,"newer")}
+      await Cloud.adopt(remote);loadCompany(rs,"PICKED UP WHERE YOU LEFT OFF",`Loaded your company from ${remote.device||"your other device"}. ${T.rank(S)} with ${money(T.netWorth(S))} net worth.`);return}
+    cloudChoice(remote,"newer")}
+  catch(e){CU.err=Cloud.acct?.expired?"":e.message;dirty=true}}
+
+async function doSignIn(create){if(CU.busy)return;CU.busy=create?"Creating…":"Signing in…";CU.err="";dirty=true;render();
+  try{await Cloud.signIn(CU.name,CU.pass,create);CU.pass="";
+    const remote=create?null:await Cloud.pull();
+    if(remote){CU.busy="";cloudChoice(remote,"signin")}
+    else{await saveNow();await Cloud.push(S,{force:true});SFX.play("fanfare");toast(create?"Account made! This company now saves to the cloud.":"Signed in. This company now saves to the cloud.")}}
+  catch(e){CU.err=e.message;SFX.play("bad")}
+  CU.busy="";dirty=true;render()}
 
 /* ---------- actions ---------- */
 function arm(k){armed[k]=1;setTimeout(()=>{delete armed[k];dirty=true},3000);dirty=true;render()}
@@ -572,8 +646,12 @@ const ACT={
   dlsave:()=>{const blob=new Blob([saveUI.code],{type:"text/plain"}),a=document.createElement("a"),d=new Date();a.href=URL.createObjectURL(blob);
     a.download=`tower-tycoon-save-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.txt`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);SFX.play("coin")},
   importsave:()=>{let ns;try{ns=T.importCode(saveUI.imp)}catch(e){SFX.play("bad");return toast(e.message)}
-    if(!armed.imp)return arm("imp");delete armed.imp;S=ns;rt.f={};rt.earn=[];sel=0;view.sel=0;saveUI.imp="";saveUI.code="";SFX.enabled=S.settings.sound;
-    saveNow();view.rebuild();toBottom();note({kind:"milestone",title:"COMPANY LOADED",text:`Welcome back, boss. ${T.rank(S)} with ${money(T.netWorth(S))} net worth.`,sfx:"fanfare"});setTab("floor")},
+    if(!armed.imp)return arm("imp");delete armed.imp;loadCompany(ns,"COMPANY LOADED");cloudSync({manual:false})},
+  signin:()=>doSignIn(false),
+  signup:()=>doSignIn(true),
+  signout:async()=>{await cloudSync({manual:false});await Cloud.signOut();CU.err="";act("click","Signed out. Your company stays on this device too.")},
+  cloudsave:()=>cloudSync({manual:true}),
+  cloudpull:async()=>{CU.busy="Checking…";dirty=true;try{const r=await Cloud.pull();CU.busy="";if(!r)toast("Nothing in the cloud yet. Tap SAVE NOW.");else if(r.updateTime===Cloud.acct.base)toast("You're already playing your latest cloud save.");else cloudChoice(r,"newer")}catch(e){CU.busy="";CU.err=e.message}dirty=true},
   reset:()=>{if(!armed.reset)return arm("reset");delete armed.reset;const keep=S.settings;S=T.fresh();S.settings=keep;S.tutorialDone=true;rt.f={};sel=0;act("bad","Fresh start. Go build.")},
 };
 const body=$("#body");
@@ -581,6 +659,7 @@ body.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(!b||
 body.addEventListener("change",e=>{const s=e.target.closest("select[data-act]");if(s)ACT[s.dataset.act]?.(s.dataset,s);
   if(e.target.id==="imp-file"&&e.target.files[0]){const r=new FileReader();r.onload=()=>{saveUI.imp=String(r.result);dirty=true;render();toast("Save file loaded. Tap LOAD THIS SAVE.")};r.readAsText(e.target.files[0])}});
 body.addEventListener("input",e=>{if(e.target.id==="tsearch"){TU.q=e.target.value;const q=TU.q.trim().toLowerCase();body.querySelectorAll(".erow").forEach(r=>r.hidden=!!q&&!r.dataset.name.includes(q))}
+  if(e.target.id==="acc-name"||e.target.id==="acc-pass"){CU[e.target.id==="acc-name"?"name":"pass"]=e.target.value;const ok=!!CU.name.trim()&&!!CU.pass&&!CU.busy;body.querySelectorAll('[data-act="signin"],[data-act="signup"]').forEach(b=>b.disabled=!ok);lastSig=sig()}
   if(e.target.id==="imp-code"){const had=!!saveUI.imp.trim();saveUI.imp=e.target.value;const b=body.querySelector('[data-act="importsave"]');if(b)b.disabled=!saveUI.imp.trim();if(had!==!!saveUI.imp.trim())lastSig=sig()}});
 body.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("tr[data-act]"))ACT[e.target.dataset.act]?.(e.target.dataset)});
 addEventListener("pointerdown",()=>{pointerDown=true;SFX.unlock()});addEventListener("pointerup",()=>setTimeout(()=>pointerDown=false,50));
@@ -610,7 +689,7 @@ let tutI=0;
 function startTutorial(){tutI=0;showTut()}
 function showTut(){const st=STEPS[tutI],root=$("#tut-root");if(st.tab&&tab!==st.tab)setTab(st.tab);SFX.play("tut");
   root.innerHTML=`<div class="tut-hole"></div><div class="tut-box" role="dialog" aria-modal="true"><span class="step">${tutI+1} / ${STEPS.length}</span><h2></h2><p></p>
-    <div class="row spread"><button class="ghost" id="tut-skip">SKIP</button><div class="row">${tutI?`<button class="ghost" id="tut-back">BACK</button>`:""}<button id="tut-next">${tutI===STEPS.length-1?"LET'S GO":"NEXT"}</button></div></div></div>`;
+    <div class="row spread"><div class="row"><button class="ghost" id="tut-skip">SKIP</button>${!tutI&&Cloud.ready&&!Cloud.acct?`<button class="cyan" id="tut-acct">I HAVE AN ACCOUNT</button>`:""}</div><div class="row">${tutI?`<button class="ghost" id="tut-back">BACK</button>`:""}<button id="tut-next">${tutI===STEPS.length-1?"LET'S GO":"NEXT"}</button></div></div></div>`;
   root.querySelector("h2").textContent=st.t;root.querySelector("p").textContent=st.p;
   const hole=root.querySelector(".tut-hole"),box=root.querySelector(".tut-box");
   requestAnimationFrame(()=>{const bw=box.offsetWidth,bh=box.offsetHeight,vw=innerWidth,vh=innerHeight;
@@ -620,7 +699,7 @@ function showTut(){const st=STEPS[tutI],root=$("#tut-root");if(st.tab&&tab!==st.
     else{Object.assign(hole.style,{left:vw/2+"px",top:vh/2+"px",width:"0px",height:"0px"});Object.assign(box.style,{left:(vw-bw)/2+"px",top:(vh-bh)/2+"px"})}});
   const done=()=>{root.innerHTML="";S.tutorialDone=true;const e=S.lots[S.cur].floors.findIndex(f=>!f.type);if(e>=0){sel=e;view.sel=e}save();setTab("floor")};
   $("#tut-next").onclick=()=>{if(tutI===STEPS.length-1)return done();tutI++;showTut()};
-  $("#tut-back")?.addEventListener("click",()=>{tutI--;showTut()});$("#tut-skip").onclick=done;$("#tut-next").focus()}
+  $("#tut-back")?.addEventListener("click",()=>{tutI--;showTut()});$("#tut-skip").onclick=done;const ta=$("#tut-acct");if(ta)ta.onclick=()=>{done();setTab("settings");setTimeout(()=>$("#acc-name")?.focus(),50)};$("#tut-next").focus()}
 addEventListener("resize",()=>{if($("#tut-root").innerHTML)showTut()});
 
 /* ---------- boot ---------- */
@@ -635,5 +714,6 @@ if(o&&(o.earned>0||o.filled>0)){T.applyOffline(S,o);
   $("#wb-ok").focus();$("#wb-ok").onclick=()=>{root.innerHTML="";SFX.play("cash")}}
 else T.applyOffline(S,{mins:0,earned:0,filled:0});
 S.lastTick=Date.now();await saveNow();processActions();
+cloudStart(bootBeat);
 if(!S.tutorialDone)startTutorial();
 })();

@@ -224,3 +224,11 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 .tchips button.over{border-color:var(--red);color:var(--red)}
 .tchips button.over[aria-pressed="true"]{background:var(--red);color:var(--night)}
 .card.excl{border-color:var(--gold)}
+/* accounts */
+.acct{border-color:var(--cyan)}
+.acctform{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.acctform input{flex:1 1 180px;min-width:0;font-family:var(--term);font-size:19px;background:var(--night);color:var(--ink);border:3px solid var(--line);padding:8px}
+.acctform input:focus{outline:none;border-color:var(--gold)}
+.cchoice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.cchoice .card{padding:8px}
+@media (max-width:520px){.cchoice{grid-template-columns:1fr}}
