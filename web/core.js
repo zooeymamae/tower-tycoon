@@ -237,23 +237,27 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
   r.acc+=arrivalsPerMin(S,lot,f)/60*dt;
   while(r.acc>=1){r.acc--;const waiting=r.cust.filter(c=>c.s==="in"||c.s==="q").length;
     const c={id:++rt.cid,x:1.03,s:"in",w:0,pat,look:[pick(SKIN),pick(HAIR),pick(["#ffcc3d","#5ad1ff","#ff7ad9","#5ee08a","#ff9b4a","#f2ecd8","#b78cff","#ff5d6c","#6b8cff"])],name:pick(CUST),vip:false};
-    if(r.vipPending){c.vip=true;c.pat=pat*.85;c.name="The critic";r.vipPending=false}
-    if(waiting>=8&&!c.vip){c.s="turn";c.bub="!";r.walk.push(t);f.rating+=(1-f.rating)*.01}
+    if(r.vipPending){c.vip=true;c.sp="critic";c.pri=3;c.pat=pat*.85;c.name="The critic";r.vipPending=false}
+    else if(S.goalIdx>=1&&t-(r.spAt||0)>180e3){const x=Math.random();const k=x<.006?"celeb":x<.013?"influencer":null;
+      if(k){const G=GUESTS[k];r.spAt=t;Object.assign(c,{sp:k,pri:G.pri,pat:pat*G.pat,name:G.name()});
+        ev.push({kind:"good",title:G.title,text:G.arrive(BIZ[f.type].name,lotDef(lot).name),sfx:"up",dirty:1})}}
+    if(waiting>=8&&!c.sp){c.s="turn";c.bub="!";r.walk.push(t);f.rating+=(1-f.rating)*.01}
     r.cust.push(c)}
   for(let k=0;k<f.stations;k++){const st=r.st[k],e=present(S,lot,i,f,k);
     if(!e)continue;e.busy=!!st.c;
-    if(!st.c){const q=r.cust.filter(c=>c.s==="q"||c.s==="in").sort((a,b)=>(b.vip-a.vip)||(a.id-b.id))[0];
+    if(!st.c){const q=r.cust.filter(c=>c.s==="q"||c.s==="in").sort((a,b)=>((b.pri||0)-(a.pri||0))||(a.id-b.id))[0];
       if(q&&q.s==="q"){q.s="go";q.k=k;st.c=q.id;st.prog=0}}
     else{const c=r.cust.find(x=>x.id===st.c);if(!c){st.c=null;continue}
       if(c.s==="at"){st.prog+=dt/svcTime(e,f,!!mgr);e.energy=Math.max(0,e.energy-dt*100/(200+e.sta*45)/(1+.15*lotSum(S,lot,"robots")));
         if(st.prog>=1)finish(S,rt,lot,i,f,r,c,e,k,t,ev)}}}
   // stations whose worker left mid-service: send the customer back to the front of the line
   for(let k=0;k<r.st.length;k++){const st=r.st[k];if(st.c&&(k>=f.stations||!present(S,lot,i,f,k))){const c=r.cust.find(x=>x.id===st.c);if(c){c.s="q";c.k=undefined}st.c=null;st.prog=0}}
-  const queue=r.cust.filter(c=>c.s==="in"||c.s==="q").sort((a,b)=>(b.vip-a.vip)||(a.id-b.id));
+  const queue=r.cust.filter(c=>c.s==="in"||c.s==="q").sort((a,b)=>((b.pri||0)-(a.pri||0))||(a.id-b.id));
   queue.forEach((c,j)=>{c.tx=Math.min(.985,GEO.q0+j*GEO.qs);c.w+=dt;
     if(c.s==="in"&&Math.abs(c.x-c.tx)<.01)c.s="q";
     if(c.w>c.pat){c.s="out";c.bub="!";c.bt=0;c.tx=1.05;r.walk.push(t);f.rating+=(1-f.rating)*.04;
       if(c.vip){f.rating=Math.max(1,f.rating-.5);ev.push({kind:"bad",title:"THE CRITIC LEFT",text:`The food critic gave up waiting at your ${BIZ[f.type].name}. Ouch.`,sfx:"bad"})}
+      else if(c.sp){const G=GUESTS[c.sp];f.rating=Math.max(1,f.rating-G.leaveHit);review(f,1,G.leaveReview,c.name);ev.push({kind:"bad",title:G.leftTitle,text:G.left(BIZ[f.type].name),sfx:"bad",dirty:1})}
       else if(Math.random()<.25)review(f,1,pick(REV.walk),c.name)}});
   for(const c of r.cust){if(c.s==="go"){c.tx=GEO.spot(c.k);c.w+=dt}if(c.s==="turn")c.tx=.93;
     const d=(c.tx??c.x)-c.x,sp=.38*dt;c.x+=Math.sign(d)*Math.min(Math.abs(d),sp);
@@ -267,7 +271,7 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
 function finish(S,rt,lot,i,f,r,c,e,k,t,ev){
   const tr=trait(e),wr=c.w/c.pat;let sat=3.2+(e.chr-5)*.15+f.decor*.12-Math.max(0,wr-.3)*2.5+(e.fav===f.type?.2:0)+(tr.sat||0)+(e.energy<25?-.4:0)+rnd(-.4,.4);
   const T=TIERS[f.price],pp=f.price===0?-.3:f.price===1?0:Math.max(0,T.expect-f.decor)*.3+(f.price===2?.2:.4);sat-=pp;sat=clamp(sat,1,5);
-  let pay=revenue(S,lot,f)*(sat>=4?1+.12*e.chr/10:1)*(c.vip?3:1);
+  let pay=revenue(S,lot,f)*(sat>=4?1+.12*e.chr/10:1)*(c.vip?3:c.sp?GUESTS[c.sp].pay(sat):1);
   const cap=registerCap(S,lot,f);
   if(f.manager){S.cash+=pay}else if(f.register+pay>cap){const room=Math.max(0,cap-f.register);f.register=cap;pay=room;
     if(t-r.fullNoted>90e3){r.fullNoted=t;ev.push({kind:"bad",title:"REGISTER FULL",text:`Your ${BIZ[f.type].name} register is full, so money is being lost. Tap the floor to collect, or hire a manager.`,sfx:"alert"})}r.full=true}
@@ -280,10 +284,25 @@ function finish(S,rt,lot,i,f,r,c,e,k,t,ev){
   if(c.vip){const good=sat>=4;f.rating=clamp(f.rating+(good?.6:-.4),1,5);S.rep+=good?25:-10;
     review(f,Math.round(sat),good?"A triumph. A must-visit!":"Disappointing visit.","Food critic");
     ev.push({kind:good?"big":"bad",title:good?"THE CRITIC LOVED IT!":"THE CRITIC WAS UNIMPRESSED",text:good?`${e.name} wowed the critic at your ${BIZ[f.type].name}. Rating and hype are way up!`:`The critic gave your ${BIZ[f.type].name} ${Math.round(sat)}★. Better decor and faster service would help.`,sfx:good?"fanfare":"bad",dirty:1})}
+  else if(c.sp){const G=GUESTS[c.sp],good=sat>=4;G.done(S,lot,f,good,t);review(f,Math.round(sat),good?G.goodReview:G.badReview,c.name);
+    ev.push({kind:good?"big":"bad",title:good?G.goodTitle:G.badTitle,text:G.result(good,e.name,BIZ[f.type].name,pay),sfx:good?"fanfare":"bad",dirty:1})}
   else if(Math.random()<.1)review(f,Math.round(sat),pick(REV[why]).replace("{e}",e.name.split(" ")[0]),c.name);
   c.s="out";c.tx=1.05;c.bub=sat>=4.2?"<3":sat<2.5?"!":"$";c.bt=0;
   r.st[k].c=null;r.st[k].prog=0;
 }
+/* special guests: rare customers with their own look, rules and payoff */
+const GUESTS={
+  celeb:{pri:2,pat:.7,name:()=>pick(["Starr Monroe","Jett Valentino","Lux Laurent","Rio Diamond","Vega Kensington"]),title:"A CELEBRITY WALKED IN",
+    arrive:(b,l)=>`Someone famous is in line at your ${b} at ${l}. Look for the sparkles and sunglasses. They pay 5× (7× if they love it) but hate waiting.`,
+    pay:sat=>sat>=4?7:5,leaveHit:.2,leftTitle:"THE CELEBRITY STORMED OUT",left:b=>`They waited too long at your ${b}. Rating dropped.`,leaveReview:"I am NOT waiting in line.",
+    done:(S,lot,f,good)=>{if(good)S.rep+=8},goodTitle:"THE CELEBRITY LOVED IT!",badTitle:"THE CELEBRITY WASN'T IMPRESSED",goodReview:"Obsessed. Telling everyone.",badReview:"Overrated, honestly.",
+    result:(good,e,b,pay)=>good?`${e} gave them star treatment at your ${b}. They paid ${money(pay)}!`:`They paid ${money(pay)} at your ${b} but left grumbling. Faster service and nicer decor help.`},
+  influencer:{pri:1,pat:.9,name:()=>"@"+pick(["snackqueen","tasteoftay","dailydrip","vibecheckvic","eatwithemi","lowkeyluxe"]),title:"AN INFLUENCER IS HERE",
+    arrive:(b,l)=>`A big influencer is filming at your ${b} at ${l}. Look for the phone and pink hair. Wow them and a crowd follows: +40% customers there for 3 minutes.`,
+    pay:()=>1.5,leaveHit:.25,leftTitle:"THE INFLUENCER POSTED A RANT",left:b=>`They got tired of waiting at your ${b} and told their followers. Rating dropped.`,leaveReview:"Waited forever. Not worth the hype.",
+    done:(S,lot,f,good,t)=>{if(good){S.buffs.push({kind:"traffic",lot,mult:1.4,until:t+180e3});S.rep+=5}else f.rating=Math.max(1,f.rating-.15)},
+    goodTitle:"YOU WENT VIRAL!",badTitle:"MEH REVIEW ONLINE",goodReview:"10/10 would film again!",badReview:"It was... fine I guess.",
+    result:(good,e,b)=>good?`The influencer loved ${e}'s service. Their followers are heading to this property: +40% customers for 3 minutes!`:`The influencer's post about your ${b} was lukewarm. Rating slipped a bit.`}};
 function review(f,stars,text,name){f.reviews.unshift({s:clamp(stars,1,5),t:text,n:name});f.reviews=f.reviews.slice(0,6)}
 
 function simStaff(S,dt,t,ev){

@@ -232,3 +232,10 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 .cchoice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
 .cchoice .card{padding:8px}
 @media (max-width:520px){.cchoice{grid-template-columns:1fr}}
+/* special guests on the floor panel */
+.guests{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.guests span{border:2px solid;padding:3px 6px;font-size:17px}
+.guests i{font-style:normal;color:var(--ink)}
+.g-critic{color:var(--gold);border-color:var(--gold)}
+.g-celeb{color:var(--pink);border-color:var(--pink)}
+.g-influencer{color:var(--cyan);border-color:var(--cyan)}

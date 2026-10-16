@@ -157,6 +157,8 @@ function vBiz(lot,i,f){
   let h=`<div class="head"><div><h2>${B.name.toUpperCase()} · FLOOR ${i+1}</h2><div class="muted">${T.lotDef(lot).name} · ${f.served.toLocaleString()} customers served</div></div>
     <div style="text-align:right">${L(()=>({html:starsHTML(f.rating)}))}<div>${L(()=>f.rating.toFixed(2)+" rating")}</div></div></div>`;
   h+=`<div class="why ${d[0]}"><div><b>${L(()=>diagnose(lot,i,f)[1])}</b>${L(()=>diagnose(lot,i,f)[2])}</div></div>`;
+  h+=L(()=>{const r=rt.f[lot+":"+i],g=r?r.cust.filter(c=>c.sp&&c.s!=="out"):[];
+    return{html:g.length?`<div class="guests">${g.map(c=>`<span class="g-${c.sp}">${{critic:"★ FOOD CRITIC",celeb:"$ CELEBRITY",influencer:"♥ INFLUENCER"}[c.sp]} <i>${esc(c.name)}</i>${c.s==="at"?" · being served":" · waiting "+Math.round(c.w)+"s"}</span>`).join("")}</div>`:""}});
   h+=`<div class="tiles">
     <div class="tile"><span>Arriving</span><b>${L(()=>stats().arr.toFixed(1)+" / min")}</b></div>
     <div class="tile"><span>Can serve</span><b>${L(()=>stats().cap.toFixed(1)+" / min")}</b></div>

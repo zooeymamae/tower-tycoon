@@ -72,6 +72,32 @@ class TowerView{
     cx.fillStyle=shirt;cx.fillRect(x,y-5,3,3);
     if(pose==="cheer"){cx.fillStyle=skin;cx.fillRect(x-1,y-8,1,2);cx.fillRect(x+3,y-8,1,2)}
     cx.fillStyle="#22223a";if(pose==="sit"){cx.fillRect(x,y-2,4,1)}else if(walking){const s=(t>>3)%2;cx.fillRect(x+s,y-2,1,2);cx.fillRect(x+2-s,y-2,1,1)}else{cx.fillRect(x,y-2,1,2);cx.fillRect(x+2,y-2,1,2)}}
+  /* special guests: same 3px body, but loud outfits, props, a floor glow and a floating icon so they pop out of a crowd */
+  guest(k,x,y,walk,pose,look){const cx=this.cx,t=this.tick;x=Math.round(x);const bob=(t>>4)%2;
+    const glow={critic:"#ffcc3d",celeb:"#ff7ad9",influencer:"#5ad1ff"}[k];
+    // spotlight from the ceiling plus a bright pad under their feet
+    cx.fillStyle=glow;cx.globalAlpha=.16+.06*Math.sin(t/10);cx.beginPath();cx.moveTo(x,y-20);cx.lineTo(x+3,y-20);cx.lineTo(x+7,y);cx.lineTo(x-4,y);cx.closePath();cx.fill();
+    cx.globalAlpha=.75+.25*Math.sin(t/6);cx.fillRect(x-3,y-1,9,1);cx.fillRect(x-2,y,7,1);cx.globalAlpha=1;
+    if(k==="critic"){
+      this.person(x,y,"#7a5232",look[0],"#22223a",walk,pose);
+      cx.fillStyle="#7a5232";cx.fillRect(x,y-2,3,1);                          // long trench coat
+      cx.fillStyle="#d8303e";cx.fillRect(x-1,y-9,4,1);cx.fillRect(x,y-10,2,1);  // red beret
+      cx.fillStyle="#f2ecd8";cx.fillRect(x+3,y-5,2,2);cx.fillStyle="#22223a";cx.fillRect(x+4,y-6,1,1); // notepad + pen
+      const sy=y-14-bob;cx.fillStyle="#ffcc3d";cx.fillRect(x+1,sy,1,3);cx.fillRect(x,sy+1,3,1);         // gold star
+    }else if(k==="celeb"){
+      this.person(x,y,(t>>3)%2?"#ffcc3d":"#fff1c0",look[0],"#f2ecd8",walk,pose);
+      cx.fillStyle="#141428";cx.fillRect(x-1,y-7,5,1);                          // shades
+      cx.fillStyle="#ff7ad9";cx.fillRect(x-1,y-5,1,2);cx.fillRect(x+3,y-5,1,2);   // feather boa
+      for(let j=0;j<3;j++){const ph=(t+j*11)%33;if(ph<8){cx.fillStyle="#ffffff";const sx=x-3+((j*5+(t>>5))%9),sy=y-11+((j*3)%6);cx.fillRect(sx,sy,1,1);if(ph>2&&ph<6){cx.fillRect(sx-1,sy,3,1);cx.fillRect(sx,sy-1,1,3)}}}
+      text(cx,"$",x,y-16-bob,"#ffcc3d",false);
+    }else if(k==="influencer"){
+      this.person(x,y,"#ff7ad9",look[0],"#ff3dd0",walk,pose);
+      cx.fillStyle="#ff3dd0";cx.fillRect(x+1,y-9,2,1);                          // top bun
+      cx.fillStyle="#141428";cx.fillRect(x+3,y-9,1,3);                          // phone held up
+      if((t>>2)%6===0){cx.fillStyle="#ffffff";cx.fillRect(x+4,y-9,1,1);cx.globalAlpha=.4;cx.fillRect(x+5,y-10,2,3);cx.globalAlpha=1}
+      cx.fillStyle="#ff5d6c";if((t>>4)%2)cx.fillRect(x-2,y-10,1,1);             // LIVE dot
+      this.heart(x,y-15-bob);
+    }}
   heart(x,y){const cx=this.cx;cx.fillStyle="#ff7ad9";cx.fillRect(x,y,1,1);cx.fillRect(x+2,y,1,1);cx.fillRect(x,y+1,3,1);cx.fillRect(x+1,y+2,1,1)}
 
   draw(){
@@ -199,8 +225,8 @@ class TowerView{
     if(f.buff&&f.buff.until>Date.now()){cx.fillStyle=(t>>3)%2?"#ffcc3d":"#ff7ad9";cx.fillRect(RX0,y+2,2,FH-3)}
     // customers
     if(r)for(const c of r.cust){const x=px(c.x);if(x>RX1+1)continue;
-      const pose=c.s==="at"&&f.type==="spa"?"sit":undefined;this.person(x,fy-(c.s==="at"&&f.type==="dining"?0:0),c.look[2],c.look[0],c.look[1],c.s!=="at"&&c.s!=="q",pose);
-      if(c.vip){cx.fillStyle="#ffcc3d";cx.fillRect(Math.round(x),fy-10,3,1);cx.fillRect(Math.round(x),fy-11,1,1);cx.fillRect(Math.round(x)+2,fy-11,1,1)}
+      const pose=c.s==="at"&&f.type==="spa"?"sit":undefined,walk=c.s!=="at"&&c.s!=="q";
+      if(c.sp)this.guest(c.sp,x,fy,walk,pose,c.look);else this.person(x,fy,c.look[2],c.look[0],c.look[1],walk,pose);
       if((c.s==="q"||c.s==="in")&&c.w/c.pat>.55){cx.fillStyle=c.w/c.pat>.8?"#ff5d6c":"#ffcc3d";if(c.w/c.pat<.8||(t>>3)%2)cx.fillRect(Math.round(x)+1,fy-11,1,1)}
       if(c.bub&&c.bt!==undefined&&c.bt<1.6){const bx=Math.round(x),by=fy-15-Math.round(c.bt*2);
         if(c.bub==="<3")this.heart(bx,by);else text(cx,c.bub,bx,by,c.bub==="!"?"#ff5d6c":"#ffcc3d",false)}}
