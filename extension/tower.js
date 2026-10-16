@@ -309,7 +309,7 @@ class TowerView{
       cx.fillStyle="#9a95c2";const hx=(TX+TW-46+a)|0;cx.fillRect(hx,top-32,1,10+((t>>3)%4));cx.fillStyle="#ff9b4a";cx.fillRect(hx-2,top-22+((t>>3)%4),5,3)}}
 }
 /* ---------- shop scenes: one little building per shop, drawn on a 120x64 canvas ---------- */
-function drawShop(cx,k,lvl,t,col){const W=120,H=64,GY=52;cx.imageSmoothingEnabled=false;
+function drawShop(cx,k,lvl,t,col,promo){const W=120,H=64,GY=52;cx.imageSmoothingEnabled=false;
   const g=cx.createLinearGradient(0,0,0,GY);g.addColorStop(0,"#2a3a7a");g.addColorStop(1,"#6a6ab8");cx.fillStyle=g;cx.fillRect(0,0,W,GY);
   cx.fillStyle="#ffffff";for(let i=0;i<6;i++){if(((t>>5)+i)%5)cx.fillRect((i*23+7)%W,(i*11+3)%20,1,1)}
   cx.fillStyle="#3a3760";cx.fillRect(0,GY-14,14,14);cx.fillRect(104,GY-18,16,18);                       // far buildings
@@ -356,7 +356,9 @@ function drawShop(cx,k,lvl,t,col){const W=120,H=64,GY=52;cx.imageSmoothingEnable
     text(cx,"BANK",50,GY-41,"#2a1a10",false);cx.fillStyle="#ffcc3d";if((t>>3)%3===0)cx.fillRect(96,GY-12,2,2);cx.fillStyle="#3a3760";cx.fillRect(94,GY-14,6,14);shoppers(60,n)}
   // level flair: string lights, then a gold star at max
   if(lvl>=4)for(let i=0;i<14;i++){cx.fillStyle=SH[(i+(t>>4))%7];cx.fillRect(8+i*8,6+Math.round(Math.sin(i)*1.5),1,1)}
-  if(lvl>=10){const y=2+((t>>4)%2);cx.fillStyle="#ffcc3d";cx.fillRect(112,y,1,3);cx.fillRect(111,y+1,3,1)}}
+  if(lvl>=10){const y=2+((t>>4)%2);cx.fillStyle="#ffcc3d";cx.fillRect(112,y,1,3);cx.fillRect(111,y+1,3,1)}
+  if(promo){const on=(t>>4)%2;cx.fillStyle=on?"#ff3dd0":"#ffcc3d";cx.fillRect(2,GY-20,24,9);text(cx,"SALE",4,GY-18,on?"#ffffff":"#22223a",false);
+    for(let i=0;i<6;i++){const ph=(t*2+i*29)%64;cx.fillStyle=SH[i%7];cx.fillRect((i*19+7)%W,ph,1,2)}}}
 G.drawShop=drawShop;
 G.TowerView=TowerView;G.TOWER_THEMES=Object.fromEntries(Object.entries(THEMES).map(([k,v])=>[k,{...v,sky:v.night,skyDay:v.day}]));G.pixelShort=short;G.pixelText=text;
 })(globalThis);

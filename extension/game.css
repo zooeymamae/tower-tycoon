@@ -243,3 +243,12 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 .shops .card.shop canvas{width:100%;height:auto;aspect-ratio:120/64;image-rendering:pixelated;display:block;border:2px solid var(--line);margin-bottom:6px;background:var(--night)}
 .shops .card.shop:not(.owned) canvas{filter:saturate(.35) brightness(.7)}
 .shops .card.shop.owned{border-color:var(--green)}
+.shops .card.shop.owned{cursor:pointer}
+.shops .card.shop.owned:hover,.shops .card.shop.owned:focus-visible{border-color:var(--gold);outline:none}
+.tapme{color:var(--gold)}
+canvas.shopcv.big{width:100%;height:auto;aspect-ratio:120/64;image-rendering:pixelated;display:block;border:3px solid var(--line);margin:8px 0;background:var(--night)}
+input.shopname{flex:1;min-width:120px;font-family:var(--term);font-size:19px;background:var(--night);color:var(--ink);border:3px solid var(--line);padding:5px 8px}
+input.shopname:focus{outline:none;border-color:var(--gold)}
+.swatches{gap:6px;margin-top:6px}
+.swatches .sw{width:28px;height:28px;min-width:0;padding:0;border:3px solid var(--line)}
+.swatches .sw.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--gold)}
