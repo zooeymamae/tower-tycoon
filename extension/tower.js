@@ -376,7 +376,10 @@ G.drawShop=drawShop;
 /* ---------- the world behind the page: the current property's sky and street, stretched across the whole screen
    and lined up pixel-for-pixel with the tower canvas so the tower sits inside one continuous scene ---------- */
 class WorldView{
-  constructor(canvas,view,street){this.cv=canvas;this.cx=canvas.getContext("2d");this.view=view;this.st=street||null;this.sx=street?street.getContext("2d"):null;
+  constructor(canvas,view,street){
+    // pin both layers to the screen here too, so the layout is right even if an old stylesheet is cached
+    [[canvas,"-1"],[street,"1"]].forEach(([c,z])=>{if(c)Object.assign(c.style,{position:"fixed",left:"0",top:"0",zIndex:z,pointerEvents:"none",imageRendering:"pixelated",display:"block"})});
+    this.cv=canvas;this.cx=canvas.getContext("2d");this.view=view;this.st=street||null;this.sx=street?street.getContext("2d"):null;
     this.peds=[];this.cars=[];this.key=null;this.loop=this.loop.bind(this);requestAnimationFrame(this.loop)}
   /* people and cars live on the full-width street, so they walk and drive in from the edges of the screen */
   populate(E,Wl){const th=E.th,n=Math.min(60,Math.round((3+Math.sqrt(E.rep||0)/3)*Wl/180));

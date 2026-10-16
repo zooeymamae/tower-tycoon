@@ -10,6 +10,17 @@ const T=globalThis.TT,$=s=>document.querySelector(s),money=T.money;
 // pages from older versions may be missing newer elements: add them so new code never trips over them
 if(!globalThis.Cloud){const load=src=>new Promise(r=>{const sc=document.createElement("script");sc.src=src;sc.onload=sc.onerror=r;document.head.appendChild(sc)});await load("cloud-config.js");await load("cloud.js")}
 if(!globalThis.Cloud)globalThis.Cloud={ready:false,acct:null,loadAcct:async()=>null,shown:x=>x,deviceName:()=>""};
+// layout rules the new world/street layers rely on, injected here so an old cached stylesheet can't scramble the page
+{const st=document.createElement("style");st.textContent=`
+.towerbox{min-width:0;background:transparent!important;border-color:transparent!important}
+.towerscroll{width:100%;min-width:0;height:min(68vh,680px);max-height:none;overflow:hidden!important;display:flex;justify-content:center;align-items:flex-end;background:transparent!important}
+#tower{display:block;flex:none;width:auto;max-width:none;image-rendering:pixelated}
+#world,#street{position:fixed;left:0;top:0;pointer-events:none;image-rendering:pixelated}
+#world{z-index:-1}#street{z-index:1}
+.hud,.panel,.lotbar,.towerfoot,.hint{position:relative;z-index:2}
+.lotbar,.hint{background:rgba(20,20,40,.72)}
+.notes{top:auto!important;bottom:12px;flex-direction:column-reverse}
+html,body{overflow-x:hidden}`;document.head.appendChild(st)}
 if(!$("#world")){const c=document.createElement("canvas");c.id="world";c.setAttribute("aria-hidden","true");document.body.prepend(c)}
 if(!$("#street")){const c=document.createElement("canvas");c.id="street";c.setAttribute("aria-hidden","true");$("#world").after(c)}
 if(!$("#tower-hint")){const h=document.querySelector(".towerbox .hint");if(h)h.id="tower-hint";else{const d=document.createElement("div");d.id="tower-hint";d.className="hint";$("#towerbox")?.appendChild(d)}}
