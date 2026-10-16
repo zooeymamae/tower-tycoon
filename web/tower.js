@@ -308,5 +308,55 @@ class TowerView{
     if(Object.keys(this.cons).length){const a=Math.sin(t/30)*10;cx.fillStyle="#ffcc3d";cx.fillRect(TX+TW-28,top-34,2,30);cx.fillRect(TX+TW-50+a,top-34,40,2);
       cx.fillStyle="#9a95c2";const hx=(TX+TW-46+a)|0;cx.fillRect(hx,top-32,1,10+((t>>3)%4));cx.fillStyle="#ff9b4a";cx.fillRect(hx-2,top-22+((t>>3)%4),5,3)}}
 }
+/* ---------- shop scenes: one little building per shop, drawn on a 120x64 canvas ---------- */
+function drawShop(cx,k,lvl,t,col){const W=120,H=64,GY=52;cx.imageSmoothingEnabled=false;
+  const g=cx.createLinearGradient(0,0,0,GY);g.addColorStop(0,"#2a3a7a");g.addColorStop(1,"#6a6ab8");cx.fillStyle=g;cx.fillRect(0,0,W,GY);
+  cx.fillStyle="#ffffff";for(let i=0;i<6;i++){if(((t>>5)+i)%5)cx.fillRect((i*23+7)%W,(i*11+3)%20,1,1)}
+  cx.fillStyle="#3a3760";cx.fillRect(0,GY-14,14,14);cx.fillRect(104,GY-18,16,18);                       // far buildings
+  cx.fillStyle="#55527e";cx.fillRect(0,GY,W,3);cx.fillStyle="#22223a";cx.fillRect(0,GY+3,W,H-GY-3);   // sidewalk + road
+  cx.fillStyle="#ffcc3d";for(let x=((-t>>1)%12+12)%12-12;x<W;x+=12)cx.fillRect(x,GY+7,6,1);
+  const P=(x,y,shirt,skin="#e0b48c",hair="#2a1a10",walk=true)=>{x=Math.round(x);cx.fillStyle=skin;cx.fillRect(x,y-7,3,2);cx.fillStyle=hair;cx.fillRect(x,y-8,3,1);
+    cx.fillStyle=shirt;cx.fillRect(x,y-5,3,3);cx.fillStyle="#22223a";const s=walk?(t>>3)%2:0;cx.fillRect(x+s,y-2,1,2);cx.fillRect(x+2-s,y-2,1,walk?1:2)};
+  const car=(x,y,c)=>{x=Math.round(x);cx.fillStyle=c;cx.fillRect(x,y-4,14,3);cx.fillRect(x+3,y-6,8,2);cx.fillStyle="#bfe6ff";cx.fillRect(x+4,y-5,2,1);cx.fillRect(x+8,y-5,2,1);
+    cx.fillStyle="#141428";cx.fillRect(x+2,y-1,2,2);cx.fillRect(x+10,y-1,2,2)};
+  const SH=["#5ad1ff","#ff7ad9","#ffcc3d","#5ee08a","#ff9b4a","#b78cff","#f2ecd8"],SK=["#f2d1b0","#e0b48c","#c68c5e","#7a4a30"];
+  const shoppers=(door,n)=>{for(let i=0;i<n;i++){const per=180+i*37,ph=(t+i*71)%per,half=per/2,from=i%2?-6:W+2;
+    const x=ph<half?from+(door-from)*(ph/half):door+(from-door)*((ph-half)/half);if(Math.abs(x-door)>1)P(x,GY,SH[i%7],SK[i%4])}};
+  const n=Math.min(5,1+Math.floor(lvl/2));
+  if(k==="corner"){cx.fillStyle="#9a4a3a";cx.fillRect(34,GY-26,52,26);cx.fillStyle="#7a3a2e";for(let y=GY-24;y<GY;y+=4)cx.fillRect(34,y,52,1);
+    for(let i=0;i<13;i++){cx.fillStyle=i%2?"#f2ecd8":col;cx.fillRect(32+i*4,GY-28,4,4)}
+    cx.fillStyle="#fff1c0";cx.fillRect(38,GY-20,26,12);cx.fillStyle="#ff9b4a";for(let i=0;i<5;i++)cx.fillRect(40+i*5,GY-17,3,2);cx.fillStyle="#5ad1ff";for(let i=0;i<5;i++)cx.fillRect(40+i*5,GY-12,3,2);
+    cx.fillStyle="#22223a";cx.fillRect(70,GY-18,10,18);cx.fillStyle="#5ee08a";if((t>>4)%2)cx.fillRect(72,GY-16,6,3);text(cx,"24/7",37,GY-37,(t>>5)%2?"#ff5d6c":"#ffcc3d",false);shoppers(75,n)}
+  else if(k==="truck"){const bob=(t>>4)%2;cx.fillStyle=col;cx.fillRect(30,GY-22-bob,46,17);cx.fillRect(76,GY-16-bob,12,11);cx.fillStyle="#bfe6ff";cx.fillRect(79,GY-14-bob,7,5);
+    cx.fillStyle="#141428";cx.fillRect(36,GY-17-bob,24,8);cx.fillStyle="#fff1c0";cx.fillRect(37,GY-16-bob,22,6);cx.fillStyle="#f2ecd8";cx.fillRect(34,GY-24-bob,30,2);
+    P(44,GY-9-bob,"#f2ecd8","#c68c5e","#2a1a10",false);cx.fillStyle="#141428";cx.fillRect(36,GY-5,6,5);cx.fillRect(70,GY-5,6,5);cx.fillStyle="#9a95c2";cx.fillRect(38,GY-3,2,2);cx.fillRect(72,GY-3,2,2);
+    for(let i=0;i<3;i++){const ph=(t+i*20)%60;cx.fillStyle=`rgba(230,230,240,${.6-ph/100})`;cx.fillRect(50+i*3,GY-26-ph/4,3,2)}text(cx,"TACOS",34,GY-36,"#fff1c0",false);
+    for(let i=0;i<n;i++)P(14-i*5+(i===0&&(t>>6)%2?2:0),GY,SH[i],SK[i%4],"#2a1a10",false)}
+  else if(k==="laundry"){cx.fillStyle="#3d6fa8";cx.fillRect(26,GY-28,68,28);cx.fillStyle=col;cx.fillRect(26,GY-32,68,4);cx.fillStyle="#cfe9ff";cx.fillRect(30,GY-22,48,16);
+    for(let i=0;i<4;i++){const x=34+i*11;cx.fillStyle="#f2ecd8";cx.fillRect(x,GY-20,9,12);cx.fillStyle="#22223a";cx.fillRect(x+2,GY-17,5,5);cx.fillStyle=SH[(i+(t>>3))%7];cx.fillRect(x+3+((t>>2)+i)%3,GY-16,2,2)}
+    cx.fillStyle="#22223a";cx.fillRect(82,GY-18,8,18);text(cx,"SUDS",44,GY-40,"#bfe6ff",false);shoppers(86,n)}
+  else if(k==="gas"){cx.fillStyle="#f2ecd8";cx.fillRect(14,GY-34,64,5);cx.fillStyle=col;cx.fillRect(14,GY-30,64,2);cx.fillStyle="#9a95c2";cx.fillRect(20,GY-28,2,28);cx.fillRect(70,GY-28,2,28);
+    for(let i=0;i<2;i++){const x=32+i*22;cx.fillStyle=col;cx.fillRect(x,GY-12,6,12);cx.fillStyle="#141428";cx.fillRect(x+1,GY-10,4,3)}
+    cx.fillStyle="#7a6a8a";cx.fillRect(84,GY-20,26,20);cx.fillStyle="#fff1c0";cx.fillRect(87,GY-16,10,8);cx.fillStyle="#22223a";cx.fillRect(100,GY-14,6,14);
+    cx.fillStyle="#22223a";cx.fillRect(100,GY-46,16,12);text(cx,"3.29",101,GY-44,"#5ee08a",false);
+    const ph=t%400,cxp=ph<120?-20+ph*0.42:ph<260?30:30+(ph-260)*0.7;car(cxp,GY+2,SH[(t/400|0)%7]);if(lvl>=3)car(52,GY+2,"#ff5d6c")}
+  else if(k==="carwash"){cx.fillStyle="#3a3a6a";cx.fillRect(30,GY-30,60,30);cx.fillStyle=col;cx.fillRect(30,GY-34,60,4);cx.fillStyle="#141428";cx.fillRect(36,GY-24,48,24);
+    for(let i=0;i<3;i++){cx.fillStyle=(t>>2)%2===i%2?"#ff7ad9":"#5ad1ff";cx.fillRect(44+i*14,GY-22,3,20)}
+    const ph=t%300,x=ph*0.5-20;car(x,GY+2,SH[(t/300|0)%7]);for(let i=0;i<6;i++){const b=(t+i*13)%40;cx.fillStyle="rgba(255,255,255,.7)";cx.fillRect(40+i*8,GY-4-b/3,2,2)}
+    text(cx,"WASH",48,GY-42,"#bfe6ff",false)}
+  else if(k==="parking"){cx.fillStyle="#8a8aa0";cx.fillRect(24,GY-40,72,40);for(let f=0;f<4;f++){const y=GY-38+f*10;cx.fillStyle="#141428";cx.fillRect(26,y,68,7);
+      for(let j=0;j<5;j++)if((f*5+j+(t>>7))%3)car(27+j*13,y+7,SH[(f+j)%7])}
+    cx.fillStyle=col;cx.fillRect(96,GY-30,10,10);text(cx,"P",99,GY-28,"#ffffff",false)}
+  else if(k==="motel"){cx.fillStyle="#d8a86a";cx.fillRect(10,GY-18,90,18);cx.fillStyle="#b07a4a";cx.fillRect(10,GY-20,90,2);
+    for(let i=0;i<7;i++){const x=14+i*12;cx.fillStyle="#7a3a2e";cx.fillRect(x,GY-12,5,12);cx.fillStyle=((i*7+(t>>6))%5)?"#fff1c0":"#3a2a3a";cx.fillRect(x+6,GY-12,4,4)}
+    cx.fillStyle="#22223a";cx.fillRect(84,GY-48,32,10);text(cx,"VACANCY",85,GY-46,(t>>4)%4?"#ff3dd0":"#5a2a4a",false);cx.fillStyle="#9a95c2";cx.fillRect(99,GY-38,2,20);
+    cx.fillStyle="#3ad6c4";cx.fillRect(104,GY-3,14,3);shoppers(20,n)}
+  else if(k==="bank"){cx.fillStyle="#d8d0b8";cx.fillRect(28,GY-30,64,30);cx.fillStyle="#efe6cc";cx.fillRect(24,GY-36,72,6);cx.fillRect(32,GY-42,56,6);
+    for(let i=0;i<5;i++){cx.fillStyle="#f8f2e0";cx.fillRect(32+i*12,GY-28,4,26)}cx.fillStyle="#22223a";cx.fillRect(56,GY-16,8,16);
+    text(cx,"BANK",50,GY-41,"#2a1a10",false);cx.fillStyle="#ffcc3d";if((t>>3)%3===0)cx.fillRect(96,GY-12,2,2);cx.fillStyle="#3a3760";cx.fillRect(94,GY-14,6,14);shoppers(60,n)}
+  // level flair: string lights, then a gold star at max
+  if(lvl>=4)for(let i=0;i<14;i++){cx.fillStyle=SH[(i+(t>>4))%7];cx.fillRect(8+i*8,6+Math.round(Math.sin(i)*1.5),1,1)}
+  if(lvl>=10){const y=2+((t>>4)%2);cx.fillStyle="#ffcc3d";cx.fillRect(112,y,1,3);cx.fillRect(111,y+1,3,1)}}
+G.drawShop=drawShop;
 G.TowerView=TowerView;G.TOWER_THEMES=Object.fromEntries(Object.entries(THEMES).map(([k,v])=>[k,{...v,sky:v.night,skyDay:v.day}]));G.pixelShort=short;G.pixelText=text;
 })(globalThis);

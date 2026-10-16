@@ -57,6 +57,28 @@ const LOTS=[
   {id:"moon", name:"Moon Base",      price:400e6,theme:"moon",  mults:{all:1.8},               blurb:"Tourists pay anything. Every business ×1.8."},
   {id:"mars", name:"Mars Colony",    price:3e9,  theme:"mars",  mults:{all:2.5},               blurb:"A whole new market. Every business ×2.5."},
 ];
+/* ---------- shops: small single-building businesses that run themselves ---------- */
+const SHOPS={
+  corner:  {name:"Corner Store",   color:"#5ee08a",price:12e3, inc:90,   perk:"+1% customers in every tower",      blurb:"Snacks, lotto tickets and gossip. Runs itself."},
+  truck:   {name:"Food Truck",     color:"#ff9b4a",price:35e3, inc:260,  perk:"+2% revenue at food businesses",    blurb:"Parks wherever the lunch crowd is."},
+  laundry: {name:"Laundromat",     color:"#5ad1ff",price:90e3, inc:600,  perk:"Staff everywhere tire 2% slower",   blurb:"Fresh uniforms for your whole team."},
+  gas:     {name:"Gas Station",    color:"#ff5d6c",price:250e3,inc:1500, perk:"+1% customers in every tower",      blurb:"Everyone has to fill up eventually."},
+  carwash: {name:"Car Wash",       color:"#9ec9ff",price:700e3,inc:3900, perk:"Away earnings +3% (up to +50%)",    blurb:"Suds, brushes and a long line on Saturdays."},
+  parking: {name:"Parking Garage", color:"#9a95c2",price:2.5e6,inc:12500,perk:"+1% revenue everywhere",            blurb:"Concrete, cars and pure profit."},
+  motel:   {name:"Roadside Motel", color:"#ffcc3d",price:10e6, inc:45e3, perk:"+1% customers in every tower",      blurb:"Vacancy? Rarely."},
+  bank:    {name:"Bank Branch",    color:"#2fbf71",price:50e6, inc:200e3,perk:"+5% dividends from your stocks",    blurb:"Your money, making money."},
+};
+const SHOP_MAX=10;
+const shopLvl=(S,k)=>S.shops&&S.shops[k]?S.shops[k].lvl:0;
+const shopInc=(S,k)=>{const l=shopLvl(S,k);return l?SHOPS[k].inc*Math.pow(1.45,l-1)*gbuff(S,"rev"):0};
+const shopsPerMin=S=>Object.keys(SHOPS).reduce((a,k)=>a+shopInc(S,k),0);
+const shopCost=(S,k)=>{const l=shopLvl(S,k);return l?Math.round(SHOPS[k].price*.6*Math.pow(1.75,l-1)):SHOPS[k].price};
+const shopValue=S=>Object.keys(SHOPS).reduce((a,k)=>{let v=0;for(let l=0;l<shopLvl(S,k);l++)v+=l?SHOPS[k].price*.6*Math.pow(1.75,l-1):SHOPS[k].price;return a+v*.5},0);
+const FOOD=new Set(["cafe","burger","dining","seafood"]);
+const shopCustBoost=S=>1+.01*(shopLvl(S,"corner")+shopLvl(S,"gas")+shopLvl(S,"motel"));
+function buyShop(S,k){const D=SHOPS[k];if(!D)return{ok:false};const l=shopLvl(S,k);if(l>=SHOP_MAX)return{ok:false,msg:"Already maxed out."};
+  const c=shopCost(S,k);if(S.cash<c)return{ok:false,msg:`You need ${money(c)}.`};S.cash-=c;S.spent+=c;S.shops[k]={lvl:l+1,since:S.shops[k]?.since||now(),earned:S.shops[k]?.earned||0};
+  log(S,l?`Upgraded the ${D.name} to level ${l+1}.`:`Bought a ${D.name}!`);return{ok:true,lvl:l+1}}
 const RANKS=["Corner Shop","Local Favorite","Block Boss","City Player","Regional Power","Tycoon","Mogul","Titan","Megacorp","Global Giant","Planetary Empire","Solar Syndicate","Galactic Conglomerate"];
 const AFFIRM=["Your business is really taking shape.","Customers are noticing.","Great call, boss.","The team believes in you.","That's how fortunes are built.","Another step toward an empire."];
 
@@ -114,7 +136,7 @@ function fresh(){
   const first=mkEmp(0,{trait:"loyal"});first.home="main";first.fav="cafe";first.spd=4;first.chr=4;first.sta=4;first.salary=Math.round(fairPay(first)*100)/100;
   const S={v:3,cash:500,rep:5,cur:"main",day:1,
     lots:{main:{floors:[bizFloor("cafe"),{type:null}]}},
-    emps:[first],applicants:[],appAt:0,inbox:[],deals:[],stocks:mkStocks(),port:{},tips:{},buffs:[],contracts:[],
+    emps:[first],applicants:[],appAt:0,inbox:[],deals:[],stocks:mkStocks(),port:{},tips:{},buffs:[],contracts:[],shops:{},
     landDiscount:0,goalIdx:0,spent:300,
     fund:{cash:0,pos:{},alloc:.2,hist:[],log:[],total:0,last:0},mkt:{sec:{},sent:0,news:[],newsIn:3,divT:0},basis:{},orders:{},realized:0,divPaid:0,
     hr:{raises:true,points:true,staffing:true,favorites:true,training:true,praise:true,requests:true,promote:false},hrLog:[],totalEarned:0,bestMin:0,chart:[],log:["Day 1. A tiny café on Main Street, one loyal employee and $500."],
@@ -157,8 +179,8 @@ function fbuff(f,k){return f.buff&&f.buff.kind===k&&f.buff.until>now()}
 function gbuff(S,k){return S.buffs.filter(b=>b.kind===k&&!b.lot&&b.until>now()).reduce((a,b)=>a*b.mult,1)}
 function lbuff(S,lot,k){return S.buffs.filter(b=>b.kind===k&&b.lot===lot&&b.until>now()).reduce((a,b)=>a*b.mult,1)}
 function arrivalsPerMin(S,lot,f){const B=BIZ[f.type],T=TIERS[f.price];
-  return B.arrive*(.35+f.rating*.18)*hypeMult(S)*T.demand*(1+.06*f.decor)*(1+.15*lotSum(S,lot,"marketing"))*(1+.1*lotSum(S,lot,"valet"))*lotTraffic(lot)*lbuff(S,lot,"traffic")*(fbuff(f,"rush")?2:1)}
-function revenue(S,lot,f){return BIZ[f.type].price*TIERS[f.price].mult*lotMult(lot,f.type)*(1+f.decor*.15)*(1+.08*lotSum(S,lot,"helipad"))*gbuff(S,"rev")*(fbuff(f,"happy")?1.5:1)}
+  return B.arrive*(.35+f.rating*.18)*hypeMult(S)*shopCustBoost(S)*T.demand*(1+.06*f.decor)*(1+.15*lotSum(S,lot,"marketing"))*(1+.1*lotSum(S,lot,"valet"))*lotTraffic(lot)*lbuff(S,lot,"traffic")*(fbuff(f,"rush")?2:1)}
+function revenue(S,lot,f){return BIZ[f.type].price*TIERS[f.price].mult*lotMult(lot,f.type)*(1+f.decor*.15)*(1+.08*lotSum(S,lot,"helipad"))*(1+.01*shopLvl(S,"parking")+(FOOD.has(f.type)?.02*shopLvl(S,"truck"):0))*gbuff(S,"rev")*(fbuff(f,"happy")?1.5:1)}
 function present(S,lot,i,f,k){const e=emp(S,f.staff[k]);return e&&e.state==="work"&&e.loc&&e.loc.lot===lot&&e.loc.i===i&&e.loc.slot===k?e:null}
 function speedF(e,f,mgr){return(.6+e.spd*.09)*(e.fav===f.type?1.2:1)*(e.energy<=0?.35:e.energy<25?.6:1)*(mgr?1.1:1)}
 const svcTime=(e,f,mgr)=>BIZ[f.type].time/speedF(e,f,mgr);
@@ -168,10 +190,10 @@ const registerCap=(S,lot,f)=>Math.max(150,revenue(S,lot,f)*25*(1+f.stations));
 function estPerMin(S,lot,i,f){return Math.min(arrivalsPerMin(S,lot,f),capacityPerMin(S,lot,i,f))*revenue(S,lot,f)}
 const wagesPerMin=S=>S.emps.reduce((a,e)=>a+e.salary,0);
 const contractPerMin=S=>S.contracts.reduce((a,c)=>a+(c.until>now()?c.perMin:0),0);
-function estIncomePerMin(S){let t=0;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type))t+=estPerMin(S,lot,i,f)});return t+contractPerMin(S)}
+function estIncomePerMin(S){let t=0;for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type))t+=estPerMin(S,lot,i,f)});return t+contractPerMin(S)+shopsPerMin(S)}
 const regTotal=S=>Object.values(S.lots).reduce((a,L)=>a+L.floors.reduce((b,f)=>b+(f.register||0),0),0);
 const portVal=S=>Object.entries(S.port).reduce((a,[t,q])=>a+q*S.stocks.find(s=>s.t===t).p,0);
-const netWorth=S=>S.cash+portVal(S)+S.spent*.5+regTotal(S)+(S.fund?fundValue(S):0);
+const netWorth=S=>S.cash+shopValue(S)+portVal(S)+S.spent*.5+regTotal(S)+(S.fund?fundValue(S):0);
 const fee=S=>Math.max(.002,.02-.004*coSum(S,"trade"));
 const avgRating=S=>{let n=0,t=0;for(const L of Object.values(S.lots))for(const f of L.floors)if(isBiz(f.type)){n++;t+=f.rating}return n?t/n:0};
 
@@ -210,6 +232,7 @@ function tick(S,rt,dt,t=now()){
   const ev=[];if(dt<=0)return ev;
   const wage=wagesPerMin(S)/60*dt;S.cash-=wage;
   const con=contractPerMin(S)/60*dt;if(con){S.cash+=con;S.totalEarned+=con;rt.earn.push([t,con])}
+  for(const k in S.shops){const v=shopInc(S,k)/60*dt;if(v>0){S.cash+=v;S.totalEarned+=v;S.shops[k].earned=(S.shops[k].earned||0)+v;rt.earn.push([t,v])}}
   S.buffs=S.buffs.filter(b=>b.until>t);S.contracts=S.contracts.filter(c=>c.until>t);
   for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type))simFloor(S,rt,lot,i,f,dt,t,ev)});
   simStaff(S,dt,t,ev);
@@ -248,7 +271,7 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
     if(!st.c){const q=r.cust.filter(c=>c.s==="q"||c.s==="in").sort((a,b)=>((b.pri||0)-(a.pri||0))||(a.id-b.id))[0];
       if(q&&q.s==="q"){q.s="go";q.k=k;st.c=q.id;st.prog=0}}
     else{const c=r.cust.find(x=>x.id===st.c);if(!c){st.c=null;continue}
-      if(c.s==="at"){st.prog+=dt/svcTime(e,f,!!mgr);e.energy=Math.max(0,e.energy-dt*100/(200+e.sta*45)/(1+.15*lotSum(S,lot,"robots")));
+      if(c.s==="at"){st.prog+=dt/svcTime(e,f,!!mgr);e.energy=Math.max(0,e.energy-dt*100/(200+e.sta*45)/(1+.15*lotSum(S,lot,"robots"))/(1+.02*shopLvl(S,"laundry")));
         if(st.prog>=1)finish(S,rt,lot,i,f,r,c,e,k,t,ev)}}}
   // stations whose worker left mid-service: send the customer back to the front of the line
   for(let k=0;k<r.st.length;k++){const st=r.st[k];if(st.c&&(k>=f.stations||!present(S,lot,i,f,k))){const c=r.cust.find(x=>x.id===st.c);if(c){c.s="q";c.k=undefined}st.c=null;st.prog=0}}
@@ -308,7 +331,7 @@ function review(f,stars,text,name){f.reviews.unshift({s:clamp(stars,1,5),t:text,
 function simStaff(S,dt,t,ev){
   for(const e of[...S.emps]){
     const tr=trait(e);
-    if(e.state==="work"){if(!e.busy)e.energy=Math.max(0,e.energy-dt*30/(200+e.sta*45)/(1+.15*lotSum(S,e.loc?.lot,"robots")));
+    if(e.state==="work"){if(!e.busy)e.energy=Math.max(0,e.energy-dt*30/(200+e.sta*45)/(1+.15*lotSum(S,e.loc?.lot,"robots"))/(1+.02*shopLvl(S,"laundry")));
       if(e.energy<25&&e.loc&&!e.noBreak){const li=findSupport(S,e.loc.lot,"lounge");
         if(li>=0&&seatsFree(S,e.loc.lot,"lounge")>0){e.state="break";e.at={lot:e.loc.lot,i:li};e.busy=false;ev.push({dirty:1})}}}
     else if(e.state==="break"){e.energy=Math.min(100,e.energy+dt*2*(1+.25*(lotSum(S,e.at.lot,"lounge")-1)));
@@ -387,6 +410,7 @@ function marketTick(S,ev){
   // dividends every 5 minutes of play
   M.divT=(M.divT||0)+20;if(M.divT>=300){M.divT=0;let paid=0;
     for(const s of S.stocks)if(s.div){paid+=(S.port[s.t]||0)*s.p*s.div;for(const p of Object.values(S.fund.pos))if(p.t===s.t)S.fund.cash+=p.q*s.p*s.div}
+    paid*=1+.05*shopLvl(S,"bank");
     if(paid>=1){S.cash+=paid;S.divPaid=(S.divPaid||0)+paid;S.totalEarned+=paid;ev.push({kind:"good",title:"DIVIDENDS PAID",text:`Your stocks paid you ${money(paid)} in dividends.`,sfx:"coin"})}}
   // sector momentum fades, market mood fades
   for(const k in M.sec)M.sec[k]*=.8;M.sent*=.85;
@@ -534,9 +558,10 @@ function timeLeft(ms){const m=Math.max(0,Math.round((ms-now())/60000));return m>
 function offline(S,t=now()){
   const el=Math.min(8*3600e3,t-(S.lastTick||t));if(el<60e3)return null;const mins=el/60000;let earned=0,filled=0;
   for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(!isBiz(f.type))return;const pm=estPerMin(S,lot,i,f);
-    if(f.manager)earned+=pm*mins*.5;else{const cap=registerCap(S,lot,f);filled+=Math.max(0,Math.min(cap-f.register,pm*mins*.5))}});
-  return{mins,earned:Math.round(earned),filled:Math.round(filled)}}
-function applyOffline(S,o){if(!o)return;S.cash+=o.earned;S.totalEarned+=o.earned+o.filled;
+    if(f.manager)earned+=pm*mins*.5*(1+Math.min(.5,.03*shopLvl(S,"carwash")));else{const cap=registerCap(S,lot,f);filled+=Math.max(0,Math.min(cap-f.register,pm*mins*.5))}});
+  const shops=Math.round(shopsPerMin(S)*mins);earned+=shops;
+  return{mins,shops,earned:Math.round(earned),filled:Math.round(filled)}}
+function applyOffline(S,o){if(!o)return;S.cash+=o.earned;if(o.mins)for(const k in S.shops)S.shops[k].earned=(S.shops[k].earned||0)+shopInc(S,k)*o.mins;S.totalEarned+=o.earned+o.filled;
   for(const[lot,L]of Object.entries(S.lots))L.floors.forEach((f,i)=>{if(isBiz(f.type)&&!f.manager){const cap=registerCap(S,lot,f);f.register=Math.min(cap,f.register+estPerMin(S,lot,i,f)*o.mins*.5)}});
   S.emps.forEach(e=>{e.energy=100;if(e.state==="break"){e.state=e.loc?(e.loc.mgr?"manage":"work"):"idle";e.at=null}});S.lastTick=now()}
 
@@ -576,6 +601,7 @@ function migrate(S){if(!S||S.v!==3)return fresh();const F=fresh();for(const k in
 G.TT={rnd,ri,pick,clamp,money,BIZ,SUPPORT,KINDS,isBiz,TIERS,LOTS,RANKS,AFFIRM,TRAITS,GEO,MAX_ST,MAX_DECOR,MAX_SUP,
   mkEmp,fairPay,xpNeed,trait,fresh,bizFloor,supFloor,lotDef,lotIdx,lotMult,lotTier,emp,lotSum,coSum,staffCap,homeOf,headcount,roomAt,allowedHere,hypeMult,maxFloors,
   floorCost,buildCost,stationCost,decorCost,supCost,hireFee,lotPrice,goal,rank,unlocked,arrivalsPerMin,revenue,present,speedF,svcTime,patience,
+  SHOPS,SHOP_MAX,shopLvl,shopInc,shopsPerMin,shopCost,buyShop,
   capacityPerMin,registerCap,estPerMin,wagesPerMin,contractPerMin,estIncomePerMin,regTotal,portVal,netWorth,fee,avgRating,
   unassign,assign,setManager,setRole,brokers,brokerCap,brokerSkill,brokerAcc,brokerAccOn,hrDirector,hrActive,RISK,STOCK_DEFS,SECTORS,PERKS,STRATS,deskLvl,hasPerk,fundValue,buyStock,sellStock,stockTimeToEarn,expectedMove,spendPoint,emptyStations,seatsFree,findSupport,frt,newRT,tick,perMin,refreshApplicants,resolveInbox,genInbox,
   genDeal,applyDeal,declineDeal,pruneDeals,timeLeft,offline,applyOffline,log,loadState,saveState,exportCode,importCode,migrate,onStateChange,pushAction,takeActions,onActions,gameOpen,KEY};

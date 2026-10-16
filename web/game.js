@@ -112,7 +112,7 @@ function sig(){
   if(tab==="team")return JSON.stringify([TU,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl,e.pts,e.salary,e.role,e.promoReady,Math.round(e.mood/10),e.spd,e.chr,e.sta,praiseReady(e)]),S.applicants.map(a=>a.id),T.staffCap(S),S.hr,TU.sub==="hr"?S.hrLog[0]?.at:0,Object.keys(armed)]);
   if(tab==="inbox")return JSON.stringify([S.inbox.map(x=>x.id),S.deals.map(x=>x.id)]);
   if(tab==="market")return JSON.stringify([mktSub,S.stocks.map(s=>[s.p,s.rating,s.preview,s.earnIn]),S.port,S.basis,S.orders,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel,S.fund.alloc,S.fund.hist.length,S.fund.log[0]?.at,S.emps.filter(e=>e.role==="broker").map(e=>[e.id,e.strat,e.sector]),Object.keys(S.fund.pos),T.brokerCap(S),S.mkt.news[0]?.id,S.mkt.news.map(n=>n.in).join(""),Math.floor((Date.now()-(S.mkt.news[0]?.at||0))/60000)]);
-  if(tab==="land")return JSON.stringify([Object.keys(S.lots),S.cur,S.landDiscount]);
+  if(tab==="land")return JSON.stringify([Object.keys(S.lots),S.cur,S.landDiscount,S.shops]).replace(/"earned":[\d.e+]+,?/g,"");
   if(tab==="money")return String(S.chart.length)+Math.floor(Date.now()/10000);
   if(tab==="records")return String(S.goalIdx)+Math.floor(Date.now()/10000);
   return tab+JSON.stringify(S.settings)+(armed.reset||0)+(armed.imp||0)+saveUI.code.length+"|"+saveUI.at+"|"+(saveUI.imp.trim()?1:0)+"|"+cloudSig()}
@@ -435,7 +435,18 @@ function vBrokers(){const F=S.fund,cap=T.brokerCap(S),bs=T.brokers(S);
   return h}
 
 /* ===== LAND ===== */
-V.land=()=>{let h=`<div class="head"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
+function vShops(){const ks=Object.keys(T.SHOPS),own=ks.filter(k=>T.shopLvl(S,k));
+  let h=`<div class="head"><h2>SHOPS ${own.length}/${ks.length}</h2>${own.length?`<span class="pill" style="color:var(--green)">+${money(T.shopsPerMin(S))}/MIN, NO WORK</span>`:""}</div>
+  <div class="muted">Small single-building businesses that run themselves. No staff, no floors, no registers to empty. Buy one and it earns on its own, even at full speed while you're away (up to 8 hours). Each one also gives your whole company a small perk that grows with its level.</div><div class="grid2 shops">`;
+  ks.forEach(k=>{const D=T.SHOPS[k],l=T.shopLvl(S,k),c=T.shopCost(S,k),inc=l?T.shopInc(S,k):D.inc,next=l&&l<T.SHOP_MAX?T.shopInc(S,k)*1.45:0;
+    h+=`<div class="card shop ${l?"owned":""}"><canvas class="shopcv" data-k="${k}" data-l="${l}" width="120" height="64"></canvas>
+      <div class="row spread"><b>${D.name}</b>${l?`<span class="pill">LV ${l}${l>=T.SHOP_MAX?" MAX":""}</span>`:`<span class="pill">FOR SALE</span>`}</div>
+      <div class="muted">${D.blurb}</div>
+      <div><span class="up">${money(inc)}/min</span>${l?` · earned ${L(()=>money(S.shops[k]?.earned||0))}`:""}</div>
+      <div class="muted">Perk: ${D.perk}${l?` (now ×${l})`:""}</div>
+      ${l>=T.SHOP_MAX?`<div class="up">Fully upgraded.</div>`:`<button class="${l?"cyan":""}" data-act="buyshop" data-k="${k}" ${cost(c)}>${l?`UPGRADE ${money(c)} → ${money(next)}/MIN`:`BUY ${money(c)}`}</button>`}</div>`});
+  return h+`</div>`}
+V.land=()=>{let h=vShops()+`<div class="head" style="margin-top:10px"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
   <div class="muted">Each property is a new tower with its own staff (hire them there), HR, lounge and crowds. Fancier districts unlock their own exclusive floors. Districts boost certain businesses, and busier districts draw bigger crowds.</div><div class="grid2">`;
   T.LOTS.forEach(l=>{const th=TOWER_THEMES[l.theme],own=S.lots[l.id],p=T.lotPrice(S,l),here=S.cur===l.id;
     h+=`<div class="card ${here?"sel":""}"><div class="thumb" style="background:linear-gradient(${th.sky.join(",")})"><div class="gr" style="background:${th.ground}"></div></div><b>${l.name}</b><div class="muted">${l.blurb}</div>`;
@@ -638,6 +649,9 @@ const ACT={
   bstrat:(d,el)=>{const e=T.emp(S,d.id);e.strat=el.value;act("click",`${first(e)} is now a ${T.STRATS[el.value].name.toLowerCase()}.`)},
   bsector:(d,el)=>{const e=T.emp(S,d.id);e.sector=el.value;act("click",`${first(e)} now specializes in ${T.SECTORS[el.value].name}.`)},
   visit:d=>{goLot(d.l);setTab("floor")},
+  buyshop:d=>{const r=T.buyShop(S,d.k),D=T.SHOPS[d.k];if(!r.ok){SFX.play("bad");return toast(r.msg||"Can't do that yet.")}
+    if(r.lvl===1)note({kind:"milestone",title:`NEW SHOP: ${D.name.toUpperCase()}`,text:`It runs itself and earns ${money(T.shopInc(S,d.k))}/min, even while you're away. Perk: ${D.perk}.`,sfx:"fanfare"});
+    act("cash",r.lvl>1?`${D.name} is now level ${r.lvl}: ${money(T.shopInc(S,d.k))}/min.`:null)},
   buylot:d=>{const l=T.lotDef(d.l),p=T.lotPrice(S,l);if(S.cash<p)return;S.cash-=p;S.spent+=l.price;S.landDiscount=0;S.lots[l.id]={floors:[{type:null},{type:null}]};
     T.log(S,`Bought ${l.name}!`);note({kind:"milestone",title:"NEW PROPERTY!",text:`Welcome to ${l.name}. ${l.blurb}`,sfx:"fanfare"});goLot(l.id);setTab("floor")},
   set:d=>{S.settings[d.k]=!S.settings[d.k];SFX.enabled=S.settings.sound;act("click")},
@@ -673,6 +687,7 @@ function handle(evs){for(const e of evs){if(e.dirty)dirty=true;if(e.title)note(e
 setInterval(()=>{const n=performance.now();let dt=(n-last)/1000;last=n;
   if(dt>90){const o=T.offline(S);if(o){T.applyOffline(S,o);note({kind:"good",title:"WELCOME BACK",text:`Managers earned ${money(o.earned)} and registers filled with ${money(o.filled)}.`,sfx:"cash"});view.rebuild()}return}
   while(dt>0){const s=Math.min(.5,dt);handle(T.tick(S,rt,s));dt-=s}},100);
+(function shopLoop(){let t=0;const step=()=>{t++;if(tab==="land"&&!document.hidden)document.querySelectorAll("canvas.shopcv").forEach(c=>{const x=c.getContext("2d");drawShop(x,c.dataset.k,+c.dataset.l,t+c.dataset.k.length*37,T.SHOPS[c.dataset.k].color)});requestAnimationFrame(step)};requestAnimationFrame(step)})();
 setInterval(()=>{hud();live();if(!pointerDown&&!["TEXTAREA","INPUT"].includes(document.activeElement?.tagName)&&(dirty||sig()!==lastSig))render()},350);
 
 /* ---------- tutorial ---------- */
@@ -710,7 +725,7 @@ const o=T.offline(S);
 toBottom();render();
 if(o&&(o.earned>0||o.filled>0)){T.applyOffline(S,o);
   const root=$("#modal-root");root.innerHTML=`<div class="modal"><div class="event" role="dialog" aria-modal="true"><span class="tag">WELCOME BACK</span><h2>WHILE YOU WERE AWAY</h2>
-    ${o.earned?`<div class="big">+${money(o.earned)}</div><p>Your managers kept things running and banked it for you.</p>`:""}
+    ${o.earned?`<div class="big">+${money(o.earned)}</div><p>${o.shops&&o.earned-o.shops>0?`Your managers banked ${money(o.earned-o.shops)} and your shops made ${money(o.shops)}.`:o.shops?`Your shops kept the lights on and made ${money(o.shops)}.`:"Your managers kept things running and banked it for you."}</p>`:""}
     ${o.filled?`<p>Your registers filled up with <b style="color:var(--gold)">${money(o.filled)}</b>. Tap each floor (or COLLECT) to bank it.${o.earned?"":" Promote managers so floors earn on their own while you're gone."}</p>`:""}
     <div class="row"><button id="wb-ok">LET'S GO</button></div></div></div>`;
   $("#wb-ok").focus();$("#wb-ok").onclick=()=>{root.innerHTML="";SFX.play("cash")}}

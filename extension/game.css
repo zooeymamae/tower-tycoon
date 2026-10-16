@@ -239,3 +239,7 @@ tr.sech td{font-family:var(--pix);font-size:8px;color:var(--dim);padding-top:10p
 .g-critic{color:var(--gold);border-color:var(--gold)}
 .g-celeb{color:var(--pink);border-color:var(--pink)}
 .g-influencer{color:var(--cyan);border-color:var(--cyan)}
+/* shops */
+.shops .card.shop canvas{width:100%;height:auto;aspect-ratio:120/64;image-rendering:pixelated;display:block;border:2px solid var(--line);margin-bottom:6px;background:var(--night)}
+.shops .card.shop:not(.owned) canvas{filter:saturate(.35) brightness(.7)}
+.shops .card.shop.owned{border-color:var(--green)}
