@@ -80,7 +80,7 @@ T.onActions(processActions);
 
 /* ---------- feedback ---------- */
 function toast(m){document.querySelectorAll(".toast").forEach(t=>t.remove());const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
-function note(n){if(n.sfx)SFX.play(n.sfx);
+function note(n){if(S.settings.quiet&&(n.kind==="good"||n.kind==="info"))return;if(n.sfx)SFX.play(n.sfx);
   const el=document.createElement("div");el.className="note "+n.kind;el.innerHTML="<b></b><p></p>";el.querySelector("b").textContent=n.title;el.querySelector("p").textContent=n.text;
   el.onclick=()=>{if(n.kind==="deal"||/UNHAPPY/.test(n.title))setTab("inbox");else if(/LEVEL/.test(n.title))setTab("team");el.classList.add("out");setTimeout(()=>el.remove(),300)};
   const box=$("#notes");box.prepend(el);while(box.children.length>3)box.lastChild.remove();
@@ -548,6 +548,7 @@ V.records=()=>{const nw=T.netWorth(S),g=T.goal(S.goalIdx),prev=S.goalIdx?T.goal(
 V.settings=()=>`${vAccount()}<h3>SETTINGS</h3>
   <div class="toggle"><span>Sound effects</span><button data-act="set" data-k="sound" class="${S.settings.sound?"green":"ghost"}">${S.settings.sound?"ON":"OFF"}</button></div>
   ${hasNotif?`<div class="toggle"><span>Desktop alerts for deals and big moments</span><button data-act="set" data-k="notify" class="${S.settings.notify?"green":"ghost"}">${S.settings.notify?"ON":"OFF"}</button></div>`:""}
+  <div class="toggle"><span>Fewer pop-ups<br><span class="muted">Only show big moments, warnings, deals and requests. Small good news is skipped.</span></span><button data-act="set" data-k="quiet" class="${S.settings.quiet?"green":"ghost"}">${S.settings.quiet?"ON":"OFF"}</button></div>
   <div class="toggle"><span>Tutorial</span><button class="cyan" data-act="tut">REPLAY</button></div>
   <div class="toggle"><span>Start a brand new company</span><button data-act="reset" class="${armed.reset?"red":"ghost"}">${armed.reset?"TAP AGAIN TO ERASE":"RESET"}</button></div>
   <div class="muted">While this tab is closed, floors with a manager keep earning at half speed for up to 8 hours. Floors without one fill their registers.</div>

@@ -275,9 +275,9 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
   while(r.acc>=1){r.acc--;const waiting=r.cust.filter(c=>c.s==="in"||c.s==="q").length;
     const c={id:++rt.cid,x:1.03,s:"in",w:0,pat,look:[pick(SKIN),pick(HAIR),pick(["#ffcc3d","#5ad1ff","#ff7ad9","#5ee08a","#ff9b4a","#f2ecd8","#b78cff","#ff5d6c","#6b8cff"])],name:pick(CUST),vip:false};
     if(r.vipPending){c.vip=true;c.sp="critic";c.pri=3;c.pat=pat*.85;c.name="The critic";r.vipPending=false}
-    else if(S.goalIdx>=1&&t-(r.spAt||0)>180e3){const x=Math.random();const k=x<.006?"celeb":x<.013?"influencer":null;
-      if(k){const G=GUESTS[k];r.spAt=t;Object.assign(c,{sp:k,pri:G.pri,pat:pat*G.pat,name:G.name()});
-        ev.push({kind:"good",title:G.title,text:G.arrive(BIZ[f.type].name,lotDef(lot).name),sfx:"up",dirty:1})}}
+    // special guests are rare: at most one every 6 minutes across your whole company, and they arrive quietly (look for the spotlight)
+    else if(S.goalIdx>=1&&t-(rt.guestAt||0)>360e3){const x=Math.random();const k=x<.003?"celeb":x<.007?"influencer":null;
+      if(k){const G=GUESTS[k];rt.guestAt=t;Object.assign(c,{sp:k,pri:G.pri,pat:pat*G.pat,name:G.name()});ev.push({dirty:1})}}
     if(waiting>=8&&!c.sp){c.s="turn";c.bub="!";r.walk.push(t);f.rating+=(1-f.rating)*.01}
     r.cust.push(c)}
   for(let k=0;k<f.stations;k++){const st=r.st[k],e=present(S,lot,i,f,k);
@@ -294,7 +294,7 @@ function simFloor(S,rt,lot,i,f,dt,t,ev){
     if(c.s==="in"&&Math.abs(c.x-c.tx)<.01)c.s="q";
     if(c.w>c.pat){c.s="out";c.bub="!";c.bt=0;c.tx=1.05;r.walk.push(t);f.rating+=(1-f.rating)*.04;
       if(c.vip){f.rating=Math.max(1,f.rating-.5);ev.push({kind:"bad",title:"THE CRITIC LEFT",text:`The food critic gave up waiting at your ${BIZ[f.type].name}. Ouch.`,sfx:"bad"})}
-      else if(c.sp){const G=GUESTS[c.sp];f.rating=Math.max(1,f.rating-G.leaveHit);review(f,1,G.leaveReview,c.name);ev.push({kind:"bad",title:G.leftTitle,text:G.left(BIZ[f.type].name),sfx:"bad",dirty:1})}
+      else if(c.sp){const G=GUESTS[c.sp];f.rating=Math.max(1,f.rating-G.leaveHit);review(f,1,G.leaveReview,c.name);ev.push({dirty:1})}
       else if(Math.random()<.25)review(f,1,pick(REV.walk),c.name)}});
   for(const c of r.cust){if(c.s==="go"){c.tx=GEO.spot(c.k);c.w+=dt}if(c.s==="turn")c.tx=.93;
     const d=(c.tx??c.x)-c.x,sp=.38*dt;c.x+=Math.sign(d)*Math.min(Math.abs(d),sp);
@@ -322,7 +322,7 @@ function finish(S,rt,lot,i,f,r,c,e,k,t,ev){
     review(f,Math.round(sat),good?"A triumph. A must-visit!":"Disappointing visit.","Food critic");
     ev.push({kind:good?"big":"bad",title:good?"THE CRITIC LOVED IT!":"THE CRITIC WAS UNIMPRESSED",text:good?`${e.name} wowed the critic at your ${BIZ[f.type].name}. Rating and hype are way up!`:`The critic gave your ${BIZ[f.type].name} ${Math.round(sat)}★. Better decor and faster service would help.`,sfx:good?"fanfare":"bad",dirty:1})}
   else if(c.sp){const G=GUESTS[c.sp],good=sat>=4;G.done(S,lot,f,good,t);review(f,Math.round(sat),good?G.goodReview:G.badReview,c.name);
-    ev.push({kind:good?"big":"bad",title:good?G.goodTitle:G.badTitle,text:G.result(good,e.name,BIZ[f.type].name,pay),sfx:good?"fanfare":"bad",dirty:1})}
+    ev.push(good?{kind:"good",title:G.goodTitle,text:G.result(good,e.name,BIZ[f.type].name,pay),sfx:"coin",dirty:1}:{dirty:1})}
   else if(Math.random()<.1)review(f,Math.round(sat),pick(REV[why]).replace("{e}",e.name.split(" ")[0]),c.name);
   c.s="out";c.tx=1.05;c.bub=sat>=4.2?"<3":sat<2.5?"!":"$";c.bt=0;
   r.st[k].c=null;r.st[k].prog=0;
