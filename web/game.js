@@ -52,12 +52,15 @@ $("#add-floor").onclick=()=>{if(curShop())return ACT.buyshop({k:curShop()});cons
 function goEmptyFloor(){for(const[lot,L0]of Object.entries(S.lots)){const i=L0.floors.findIndex(f=>!f.type);if(i>=0){if(lot!==S.cur)goLot(lot);sel=i;view.sel=i;setTab("floor");return true}}
   toast("No empty floors. Use + FLOOR under your tower first.");return false}
 function toBottom(){requestAnimationFrame(()=>requestAnimationFrame(()=>{const ts=$("#towerscroll");ts.scrollTop=ts.scrollHeight}))}
-function goLot(id){S.curShop=null;S.cur=id;sel=0;TU.lot=null;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
+function goLot(id){aimTo("lot",id);S.curShop=null;S.cur=id;sel=0;TU.lot=null;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
 /* the ◀ ▶ arrows step through every tower, then every shop */
 const places=()=>[...owned().map(l=>({t:"lot",id:l.id})),...Object.keys(T.SHOPS).filter(k=>S.shops?.[k]).map(k=>({t:"shop",id:k}))];
-function goShop(k){S.curShop=k;view.rebuild();SFX.play("click");save();setTab("floor")}
+/* which way to drive: ▶ goes right, ◀ goes left; jumping from a menu goes in list order */
+function placeIdx(){const P=places(),cs=curShop();return P.findIndex(p=>cs?p.t==="shop"&&p.id===cs:p.t==="lot"&&p.id===S.cur)}
+let dirLock=0;function aimTo(t,id){if(dirLock)return;const P=places(),a=placeIdx(),b=P.findIndex(p=>p.t===t&&p.id===id);view.transDir=b<a?-1:1}
+function goShop(k){aimTo("shop",k);S.curShop=k;view.rebuild();SFX.play("click");save();setTab("floor")}
 function stepPlace(d){const P=places(),cs=curShop(),i=P.findIndex(p=>cs?p.t==="shop"&&p.id===cs:p.t==="lot"&&p.id===S.cur),n=P[(i+d+P.length)%P.length];
-  if(n.t==="shop")goShop(n.id);else goLot(n.id)}
+  view.transDir=d;dirLock=1;if(n.t==="shop")goShop(n.id);else goLot(n.id);dirLock=0}
 $("#lot-prev").onclick=()=>stepPlace(-1);
 $("#lot-next").onclick=()=>stepPlace(1);
 function collect(lot,i){const f=S.lots[lot].floors[i],amt=f.register;if(!amt)return;S.cash+=amt;f.register=0;if(lot===S.cur)view.collected(i,amt);SFX.play("coin");floatCash();save()}
