@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="game.css">
 </head>
 <body>
+<canvas id="world" aria-hidden="true"></canvas>
 <div class="app">
   <div class="hud" id="hud">
     <div class="stat cash"><b>CASH</b><span id="h-cash">$0</span></div>
@@ -34,7 +35,7 @@
         <button class="cyan" id="add-floor">+ FLOOR</button>
         <button class="ghost" id="earn-toggle" aria-pressed="true">$ LABELS</button>
       </div>
-      <div class="hint">Tap a floor to manage it and empty its register.</div>
+      <div class="hint" id="tower-hint">Tap a floor to manage it and empty its register.</div>
     </div>
 
     <div class="panel">

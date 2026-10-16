@@ -13,23 +13,30 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const first=e=>e.name.split(" ")[0];
 
 /* ---------- tower view ---------- */
-const view=new TowerView($("#tower"),()=>S,()=>S.cur,{minH:200,getRT:()=>rt,getTime:()=>((Date.now()/240000)+.3)%1});
+const curShop=()=>S.curShop&&S.shops?.[S.curShop]?S.curShop:null;
+const view=new TowerView($("#tower"),()=>S,()=>S.cur,{minH:200,getRT:()=>rt,getTime:()=>((Date.now()/240000)+.3)%1,getShop:curShop,transparent:true,fit:$("#towerscroll")});
+new WorldView($("#world"),view);
 view.sel=sel;
-$("#tower").addEventListener("click",e=>{const i=view.hit(e.clientY);if(i<0)return;sel=i;view.sel=i;
+$("#tower").addEventListener("click",e=>{if(curShop()){SFX.play("click");return setTab("floor")}const i=view.hit(e.clientY);if(i<0)return;sel=i;view.sel=i;
   const f=S.lots[S.cur].floors[i];if(T.isBiz(f.type)&&f.register>0&&!f.manager)collect(S.cur,i);else SFX.play("click");setTab("floor")});
 $("#earn-toggle").onclick=()=>{view.showEarnings=!view.showEarnings;$("#earn-toggle").setAttribute("aria-pressed",view.showEarnings);SFX.play("click")};
-$("#collect-all").onclick=()=>{let tot=0;S.lots[S.cur].floors.forEach((f,i)=>{if(T.isBiz(f.type)&&f.register>0){tot+=f.register;view.collected(i,f.register);S.cash+=f.register;f.register=0}});
+$("#collect-all").onclick=()=>{if(curShop())return ACT.shoppromo({k:curShop()});let tot=0;S.lots[S.cur].floors.forEach((f,i)=>{if(T.isBiz(f.type)&&f.register>0){tot+=f.register;view.collected(i,f.register);S.cash+=f.register;f.register=0}});
   if(tot>0){SFX.play("cash");floatCash();save()}else SFX.play("click")};
 const owned=()=>T.LOTS.filter(l=>S.lots[l.id]);
-$("#add-floor").onclick=()=>{const L0=S.lots[S.cur];if(L0.floors.length>=T.maxFloors(S))return toast("Floor limit reached. Rank up to add more floors.");
+$("#add-floor").onclick=()=>{if(curShop())return ACT.buyshop({k:curShop()});const L0=S.lots[S.cur];if(L0.floors.length>=T.maxFloors(S))return toast("Floor limit reached. Rank up to add more floors.");
   const c=T.floorCost(S,S.cur);if(S.cash<c)return toast(`A new floor costs ${money(c)}.`);S.cash-=c;S.spent+=c;L0.floors.push({type:null});sel=L0.floors.length-1;view.sel=sel;view.construct(sel);
   T.log(S,`Added floor ${L0.floors.length} at ${T.lotDef(S.cur).name}.`);SFX.play("build");toast("New floor! Pick what goes on it.");save();setTab("floor")};
 function goEmptyFloor(){for(const[lot,L0]of Object.entries(S.lots)){const i=L0.floors.findIndex(f=>!f.type);if(i>=0){if(lot!==S.cur)goLot(lot);sel=i;view.sel=i;setTab("floor");return true}}
   toast("No empty floors. Use + FLOOR under your tower first.");return false}
 function toBottom(){requestAnimationFrame(()=>requestAnimationFrame(()=>{const ts=$("#towerscroll");ts.scrollTop=ts.scrollHeight}))}
-function goLot(id){S.cur=id;sel=0;TU.lot=null;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
-$("#lot-prev").onclick=()=>{const o=owned(),i=o.findIndex(l=>l.id===S.cur);goLot(o[(i-1+o.length)%o.length].id)};
-$("#lot-next").onclick=()=>{const o=owned(),i=o.findIndex(l=>l.id===S.cur);goLot(o[(i+1)%o.length].id)};
+function goLot(id){S.curShop=null;S.cur=id;sel=0;TU.lot=null;view.sel=0;view.rebuild();toBottom();SFX.play("click");save();render()}
+/* the ◀ ▶ arrows step through every tower, then every shop */
+const places=()=>[...owned().map(l=>({t:"lot",id:l.id})),...Object.keys(T.SHOPS).filter(k=>S.shops?.[k]).map(k=>({t:"shop",id:k}))];
+function goShop(k){S.curShop=k;view.rebuild();SFX.play("click");save();setTab("floor")}
+function stepPlace(d){const P=places(),cs=curShop(),i=P.findIndex(p=>cs?p.t==="shop"&&p.id===cs:p.t==="lot"&&p.id===S.cur),n=P[(i+d+P.length)%P.length];
+  if(n.t==="shop")goShop(n.id);else goLot(n.id)}
+$("#lot-prev").onclick=()=>stepPlace(-1);
+$("#lot-next").onclick=()=>stepPlace(1);
 function collect(lot,i){const f=S.lots[lot].floors[i],amt=f.register;if(!amt)return;S.cash+=amt;f.register=0;if(lot===S.cur)view.collected(i,amt);SFX.play("coin");floatCash();save()}
 function floatCash(){const h=$("#hud .cash");h.classList.remove("flash");void h.offsetWidth;h.classList.add("flash")}
 
@@ -39,6 +46,7 @@ function save(){clearTimeout(saveT);saveT=setTimeout(saveNow,400)}
 function saveNow(){clearTimeout(saveT);S.heartbeat=Date.now();return T.saveState(S,ME)}
 setInterval(saveNow,5000);
 setInterval(()=>{if(!document.hidden)cloudSync()},60000);
+addEventListener("resize",()=>view.fit());
 document.addEventListener("visibilitychange",()=>{if(document.hidden){hideAt=Date.now();saveNow();cloudSync({keepalive:true})}else cloudStart(hideAt)});
 addEventListener("pagehide",()=>saveNow());
 async function processActions(){const acts=await T.takeActions();for(const a of acts){
@@ -108,11 +116,12 @@ function render(){LIVE={};lk=0;const b=$("#body"),st=b.scrollTop;b.innerHTML=V[t
   if(tab==="team"&&TU.q.trim()){const q=TU.q.trim().toLowerCase();b.querySelectorAll(".erow").forEach(r=>r.hidden=!r.dataset.name.includes(q))}
   b.scrollTop=st;live();lastSig=sig();dirty=false;hud()}
 function sig(){
+  if(tab==="floor"&&curShop())return JSON.stringify(["shop",curShop(),S.shops[curShop()],Object.keys(armed)]).replace(/"earned":[\d.e+]+,?/g,"");
   if(tab==="floor"){const f=S.lots[S.cur].floors[sel];return JSON.stringify([S.cur,sel,f,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl]),S.goalIdx].map(x=>x===undefined?0:x)).replace(/"register":[\d.]+,|"rating":[\d.]+,|"served":\d+,/g,"")}
   if(tab==="team")return JSON.stringify([TU,S.emps.map(e=>[e.id,e.state,e.loc,e.lvl,e.pts,e.salary,e.role,e.promoReady,Math.round(e.mood/10),e.spd,e.chr,e.sta,praiseReady(e)]),S.applicants.map(a=>a.id),T.staffCap(S),S.hr,TU.sub==="hr"?S.hrLog[0]?.at:0,Object.keys(armed)]);
   if(tab==="inbox")return JSON.stringify([S.inbox.map(x=>x.id),S.deals.map(x=>x.id)]);
   if(tab==="market")return JSON.stringify([mktSub,S.stocks.map(s=>[s.p,s.rating,s.preview,s.earnIn]),S.port,S.basis,S.orders,Math.floor(Math.log(Math.max(1,S.cash))*15),S.tips,mktSel,S.fund.alloc,S.fund.hist.length,S.fund.log[0]?.at,S.emps.filter(e=>e.role==="broker").map(e=>[e.id,e.strat,e.sector]),Object.keys(S.fund.pos),T.brokerCap(S),S.mkt.news[0]?.id,S.mkt.news.map(n=>n.in).join(""),Math.floor((Date.now()-(S.mkt.news[0]?.at||0))/60000)]);
-  if(tab==="land")return JSON.stringify([landShop,Object.keys(armed),Object.keys(S.lots),S.cur,S.landDiscount,S.shops]).replace(/"earned":[\d.e+]+,?/g,"");
+  if(tab==="land")return JSON.stringify([Object.keys(armed),Object.keys(S.lots),S.cur,S.landDiscount,S.shops]).replace(/"earned":[\d.e+]+,?/g,"");
   if(tab==="money")return String(S.chart.length)+Math.floor(Date.now()/10000);
   if(tab==="records")return String(S.goalIdx)+Math.floor(Date.now()/10000);
   return tab+JSON.stringify(S.settings)+(armed.reset||0)+(armed.imp||0)+saveUI.code.length+"|"+saveUI.at+"|"+(saveUI.imp.trim()?1:0)+"|"+cloudSig()}
@@ -121,18 +130,25 @@ function hud(){
   $("#h-cash").textContent=money(S.cash);
   const pm=T.perMin(rt)-T.wagesPerMin(S)+T.contractPerMin(S);$("#h-inc").textContent=(pm>=0?"+":"")+money(pm);$("#h-inc").style.color=pm<0?"var(--red)":"";
   $("#h-nw").textContent=money(T.netWorth(S));$("#h-rate").textContent="★ "+T.avgRating(S).toFixed(1);
-  {const n=T.headcount(S,S.cur),c=T.staffCap(S,S.cur);$("#h-team").textContent=`${n} / ${c}`;$("#h-team").style.color=n>c?"var(--red)":"";$("#hud .team b").textContent=owned().length>1?"TEAM HERE":"TEAM"}$("#h-rank").textContent=T.rank(S);
-  const lot=T.lotDef(S.cur);$("#lot-name").textContent=lot.name;$("#lot-bonus").textContent=lot.blurb;
-  const multi=owned().length>1;$("#lot-prev").disabled=!multi;$("#lot-next").disabled=!multi;
+  if(curShop()){$("#h-team").textContent=`${S.emps.length}`;$("#h-team").style.color="";$("#hud .team b").textContent="TEAM (ALL)"}
+  else{const n=T.headcount(S,S.cur),c=T.staffCap(S,S.cur);$("#h-team").textContent=`${n} / ${c}`;$("#h-team").style.color=n>c?"var(--red)":"";$("#hud .team b").textContent=owned().length>1?"TEAM HERE":"TEAM"}$("#h-rank").textContent=T.rank(S);
+  const multi=places().length>1;$("#lot-prev").disabled=!multi;$("#lot-next").disabled=!multi;
+  const cs=curShop();document.body.classList.toggle("shopmode",!!cs);
+  if(cs){const D=T.SHOPS[cs],sh=S.shops[cs],c=T.shopCost(S,cs);$("#lot-name").textContent=shopName(cs);$("#lot-bonus").textContent=`${D.name} · runs itself · ${money(T.shopInc(S,cs))}/min`;
+    const cb=$("#collect-all"),pr=(sh.promoReady||0)-Date.now();cb.textContent=T.promoOn(S,cs)?"PROMO ON "+Math.ceil((sh.promoUntil-Date.now())/1000)+"s":pr>0?"PROMO IN "+Math.ceil(pr/60e3)+"m":"RUN PROMO";cb.disabled=pr>0;
+    const b=$("#add-floor"),mx=sh.lvl>=T.SHOP_MAX;b.textContent=mx?"MAX LEVEL":"UPGRADE "+money(c);b.disabled=mx||S.cash<c;b.title=mx?"Fully upgraded":"Upgrade this shop";
+    $("#tower-hint").textContent="Shops run themselves. Tap it, or open FLOOR, to manage it.";}
+  else{
+  const lot=T.lotDef(S.cur);$("#lot-name").textContent=lot.name;$("#lot-bonus").textContent=lot.blurb;$("#tower-hint").textContent="Tap a floor to manage it and empty its register.";
   const reg=S.lots[S.cur].floors.reduce((a,f)=>a+(T.isBiz(f.type)&&!f.manager?f.register:0),0);$("#collect-all").textContent="COLLECT "+money(reg);$("#collect-all").disabled=reg<1;
-  {const L0=S.lots[S.cur],cap=L0.floors.length>=T.maxFloors(S),c=T.floorCost(S,S.cur),b=$("#add-floor");b.textContent=cap?"MAX FLOORS":"+ FLOOR "+money(c);b.disabled=cap||S.cash<c;b.title=cap?"Rank up to add more floors":"Add an empty floor to this tower"}
+  {const L0=S.lots[S.cur],cap=L0.floors.length>=T.maxFloors(S),c=T.floorCost(S,S.cur),b=$("#add-floor");b.textContent=cap?"MAX FLOORS":"+ FLOOR "+money(c);b.disabled=cap||S.cash<c;b.title=cap?"Rank up to add more floors":"Add an empty floor to this tower"}}
   const ib=$("#inbox-badge"),n=S.inbox.length+S.deals.length;ib.hidden=!n;ib.textContent=n;
   const tb=$("#team-badge"),m=S.emps.filter(e=>e.pts>0||e.mood<30||(e.promoReady&&e.role==="staff")).length;tb.hidden=!m;tb.textContent=m;
 }
 
 /* ===== FLOOR ===== */
 function estNew(type,lot){const B=T.BIZ[type],cap=60/(B.time/.96),arr=B.arrive*.89*T.hypeMult(S)*(1+.15*T.lotSum(S,lot,"marketing"));return Math.min(cap,arr)*B.price*T.lotMult(lot,type)}
-V.floor=()=>{
+V.floor=()=>{if(curShop())return vShopDetail(curShop());
   const lot=S.cur,L0=S.lots[lot];if(sel>=L0.floors.length)sel=0;view.sel=sel;const f=L0.floors[sel];
   const body=!f.type?vEmpty(lot):T.isBiz(f.type)?vBiz(lot,sel,f):vSupport(lot,sel,f);
   return towerRow(lot)+body};
@@ -442,8 +458,7 @@ function vShopDetail(k){const D=T.SHOPS[k],sh=S.shops[k];if(!sh){landShop=null;r
   const l=sh.lvl,c=T.shopCost(S,k),mode=sh.mode||"normal",perkNow=T.shopPerk(S,k);
   const perkTxt={corner:`+${perkNow}% customers in every tower`,gas:`+${perkNow}% customers in every tower`,motel:`+${perkNow}% customers in every tower`,truck:`+${2*perkNow}% revenue at food businesses`,
     laundry:`Staff everywhere tire ${2*perkNow}% slower`,carwash:`Away earnings +${Math.min(50,3*perkNow)}%`,parking:`+${perkNow}% revenue everywhere`,bank:`+${5*perkNow}% stock dividends`}[k];
-  let h=`<div class="row spread"><button class="ghost" data-act="closeshop">◀ ALL SHOPS</button><span class="pill">LV ${l}${l>=T.SHOP_MAX?" MAX":""} · ${esc(D.name)}</span></div>
-  <canvas class="shopcv big" data-k="${k}" data-l="${l}" width="120" height="64"></canvas>
+  let h=`<div class="towerrow"><span><b>${esc(D.name.toUpperCase())}</b> · LV ${l}${l>=T.SHOP_MAX?" MAX":""} · runs itself</span><button class="ghost" data-act="tab" data-t="land">BUY MORE SHOPS</button></div>
   <div class="head"><h2>${esc(shopName(k).toUpperCase())}</h2><div style="text-align:right"><b class="up">${L(()=>money(T.shopInc(S,k))+"/min")}</b><div class="muted">${L(()=>"earned "+money(sh.earned||0))}</div></div></div>
   <div class="tiles"><div class="tile"><span>Perk right now</span><b>${perkTxt}</b></div><div class="tile"><span>Owned for</span><b>${L(()=>{const m=(Date.now()-(sh.since||Date.now()))/60e3;return m<60?Math.round(m)+" min":m<1440?(m/60).toFixed(1)+" hr":(m/1440).toFixed(1)+" days"})}</b></div>
     <div class="tile"><span>Pays back</span><b>${L(()=>{const m=T.shopRefund(S,k)*2/Math.max(1,T.shopInc(S,k,true));return m<60?Math.round(m)+" min":(m/60).toFixed(1)+" hr"})}</b></div></div>
@@ -464,10 +479,10 @@ function vShops(){const ks=Object.keys(T.SHOPS),own=ks.filter(k=>T.shopLvl(S,k))
       <div class="row spread"><b>${esc(l?shopName(k):D.name)}</b>${l?`<span class="pill">LV ${l}${l>=T.SHOP_MAX?" MAX":""}</span>`:`<span class="pill">FOR SALE</span>`}</div>
       <div class="muted">${D.blurb}</div>
       <div><span class="up">${money(inc)}/min</span>${l?` · earned ${L(()=>money(S.shops[k]?.earned||0))}`:""}</div>
-      <div class="muted">Perk: ${D.perk}${l?` (now ×${T.shopPerk(S,k)})`:""}</div>${l?`<div class="muted tapme">${T.promoOn(S,k)?"★ PROMO RUNNING · ":""}Tap to manage ▸</div>`:""}
+      <div class="muted">Perk: ${D.perk}${l?` (now ×${T.shopPerk(S,k)})`:""}</div>${l?`<div class="muted tapme">${T.promoOn(S,k)?"★ PROMO RUNNING · ":""}Tap to visit and manage ▸</div>`:""}
       ${l>=T.SHOP_MAX?`<div class="up">Fully upgraded.</div>`:`<button class="${l?"cyan":""}" data-act="buyshop" data-k="${k}" ${cost(c)}>${l?`UPGRADE ${money(c)} → ${money(next)}/MIN`:`BUY ${money(c)}`}</button>`}</div>`});
   return h+`</div>`}
-V.land=()=>{if(landShop)return vShopDetail(landShop);let h=vShops()+`<div class="head" style="margin-top:10px"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
+V.land=()=>{let h=vShops()+`<div class="head" style="margin-top:10px"><h2>PROPERTIES ${owned().length}/${T.LOTS.length}</h2>${S.landDiscount?`<span class="pill" style="color:var(--green)">30% OFF NEXT</span>`:""}</div>
   <div class="muted">Each property is a new tower with its own staff (hire them there), HR, lounge and crowds. Fancier districts unlock their own exclusive floors. Districts boost certain businesses, and busier districts draw bigger crowds.</div><div class="grid2">`;
   T.LOTS.forEach(l=>{const th=TOWER_THEMES[l.theme],own=S.lots[l.id],p=T.lotPrice(S,l),here=S.cur===l.id;
     h+=`<div class="card ${here?"sel":""}"><div class="thumb" style="background:linear-gradient(${th.sky.join(",")})"><div class="gr" style="background:${th.ground}"></div></div><b>${l.name}</b><div class="muted">${l.blurb}</div>`;
@@ -670,15 +685,14 @@ const ACT={
   bstrat:(d,el)=>{const e=T.emp(S,d.id);e.strat=el.value;act("click",`${first(e)} is now a ${T.STRATS[el.value].name.toLowerCase()}.`)},
   bsector:(d,el)=>{const e=T.emp(S,d.id);e.sector=el.value;act("click",`${first(e)} now specializes in ${T.SECTORS[el.value].name}.`)},
   visit:d=>{goLot(d.l);setTab("floor")},
-  openshop:d=>{landShop=d.k;shopUI.name=null;SFX.play("click");render();$("#body").scrollTop=0},
-  closeshop:()=>{landShop=null;SFX.play("click");render()},
+  openshop:d=>{shopUI.name=null;goShop(d.k)},
   shopmode:d=>{T.setShop(S,d.k,{mode:d.m});act("click",`${shopName(d.k)} is now ${T.SHOP_MODES[d.m].name.toLowerCase()}.`)},
   shoppromo:d=>{const r=T.shopPromo(S,d.k);if(!r.ok){SFX.play("bad");return toast(r.msg||"Not ready.")}act("cash",`Promo running! ${shopName(d.k)} earns double for 2 minutes.`)},
   renameshop:d=>{T.setShop(S,d.k,{name:shopUI.name??""});shopUI.name=null;act("coin",`Renamed to ${shopName(d.k)}.`)},
   paintshop:d=>{T.setShop(S,d.k,{color:d.c});act("click")},
-  sellshop:d=>{if(!armed["sell"+d.k])return arm("sell"+d.k);delete armed["sell"+d.k];const n=shopName(d.k),r=T.sellShop(S,d.k);landShop=null;act("coin",`Sold ${n} for ${money(r.v)}.`)},
+  sellshop:d=>{if(!armed["sell"+d.k])return arm("sell"+d.k);delete armed["sell"+d.k];const n=shopName(d.k),r=T.sellShop(S,d.k);S.curShop=null;view.rebuild();act("coin",`Sold ${n} for ${money(r.v)}.`)},
   buyshop:d=>{const r=T.buyShop(S,d.k),D=T.SHOPS[d.k];if(!r.ok){SFX.play("bad");return toast(r.msg||"Can't do that yet.")}
-    if(r.lvl===1)note({kind:"milestone",title:`NEW SHOP: ${D.name.toUpperCase()}`,text:`It runs itself and earns ${money(T.shopInc(S,d.k))}/min, even while you're away. Perk: ${D.perk}.`,sfx:"fanfare"});
+    if(r.lvl===1)note({kind:"milestone",title:`NEW SHOP: ${D.name.toUpperCase()}`,text:`It runs itself and earns ${money(T.shopInc(S,d.k))}/min, even while you're away. Visit it with the ◀ ▶ arrows by your tower. Perk: ${D.perk}.`,sfx:"fanfare"});
     act("cash",r.lvl>1?`${D.name} is now level ${r.lvl}: ${money(T.shopInc(S,d.k))}/min.`:null)},
   buylot:d=>{const l=T.lotDef(d.l),p=T.lotPrice(S,l);if(S.cash<p)return;S.cash-=p;S.spent+=l.price;S.landDiscount=0;S.lots[l.id]={floors:[{type:null},{type:null}]};
     T.log(S,`Bought ${l.name}!`);note({kind:"milestone",title:"NEW PROPERTY!",text:`Welcome to ${l.name}. ${l.blurb}`,sfx:"fanfare"});goLot(l.id);setTab("floor")},

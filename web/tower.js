@@ -48,12 +48,18 @@ class TowerView{
     this.minH=opts.minH||220;this.getTime=opts.getTime||(()=>{const d=new Date();return(d.getHours()*60+d.getMinutes())/1440});
     this.showEarnings=opts.showEarnings??true;this.sel=opts.sel??-1;this.tick=0;this.parts=[];this.floats=[];this.cons={};this.flash={};
     this.rain=false;this.elev={y:0,target:0,wait:0};this.lastLot=null;this.idle=opts.idle||false;
+    this.getShop=opts.getShop||(()=>null);this.transparent=!!opts.transparent;this.fitBox=opts.fit||null;this.env=null;
+    this.shopCv=document.createElement("canvas");this.shopCv.width=120;this.shopCv.height=64;
     this.cv.width=W;this.rebuild();this.loop=this.loop.bind(this);requestAnimationFrame(this.loop)}
   S(){return this.getS()}
   floors(){return this.S().lots[this.getLot()]?.floors||[]}
-  height(){return Math.max(this.minH,GROUND+LOBBY+this.floors().length*FH+ROOF)}
+  height(){return this.getShop()?this.minH:Math.max(this.minH,GROUND+LOBBY+this.floors().length*FH+ROOF)}
+  /* shrink the whole scene to fit its box, so tall towers never need scrolling */
+  fit(){const box=this.fitBox;if(!box)return;const bw=box.clientWidth,bh=box.clientHeight;if(!bw||!bh)return;
+    const s=Math.min(bw/W,bh/this.cv.height),w=Math.floor(W*s),h=Math.floor(this.cv.height*s);
+    if(w!==this._fw||h!==this._fh){this.cv.style.width=w+"px";this.cv.style.height=h+"px";this._fw=w;this._fh=h}}
   floorY(i){return this.cv.height-GROUND-LOBBY-(i+1)*FH}
-  hit(clientY){const r=this.cv.getBoundingClientRect(),y=(clientY-r.top)*this.cv.height/r.height;const i=Math.floor((this.cv.height-GROUND-LOBBY-y)/FH);return i>=0&&i<this.floors().length?i:-1}
+  hit(clientY){if(this.getShop())return -1;const r=this.cv.getBoundingClientRect(),y=(clientY-r.top)*this.cv.height/r.height;const i=Math.floor((this.cv.height-GROUND-LOBBY-y)/FH);return i>=0&&i<this.floors().length?i:-1}
   rebuild(){const S=this.S(),lot=this.getLot(),th=THEMES[T.lotDef(lot).theme];
     if(lot!==this.lastLot){this.cons={};this.flash={};this.parts=[];this.floats=[];this.lastLot=lot;this.elev={y:0,target:0,wait:0}}
     const n=Math.min(16,3+Math.floor(Math.sqrt(S.rep)/3));
@@ -66,6 +72,9 @@ class TowerView{
   collected(i,amt){const y=this.floorY(i)+FH/2,x=px(T.GEO.reg)+3;const n=Math.min(14,3+Math.floor(Math.log10(amt+1)*2));for(let k=0;k<n;k++)this.coin(x,y,true);this.floatText(i,"+"+short(amt),"#ffcc3d")}
   loop(){try{this.draw()}catch(e){console.error(e)}requestAnimationFrame(this.loop)}
 
+  drawShopScene(k,S,GY,t){const cx=this.cx,o=this.shopCv,ox=o.getContext("2d"),sh=S.shops?.[k];ox.clearRect(0,0,120,64);
+    drawShop(ox,k,sh?.lvl||1,t,sh?.color||T.SHOPS[k].color,T.promoOn(S,k),true);cx.drawImage(o,30,GY-52);
+    for(const p of this.peds){p.x+=p.v;if(p.x>W+4)p.x=-4;if(p.x<-4)p.x=W+4;this.person(p.x,GY+2+p.lane,p.shirt,p.skin,p.hair,true)}}
   person(x,y,shirt,skin,hair,walking,pose){const cx=this.cx,t=this.tick;x=Math.round(x);
     // 3px wide, 8px tall: hair, face, shirt, legs. y is the floor line.
     cx.fillStyle=skin;cx.fillRect(x,y-7,3,2);if(hair){cx.fillStyle=hair;cx.fillRect(x,y-8,3,1);cx.fillRect(x,y-7,1,1)}
@@ -101,31 +110,33 @@ class TowerView{
   heart(x,y){const cx=this.cx;cx.fillStyle="#ff7ad9";cx.fillRect(x,y,1,1);cx.fillRect(x+2,y,1,1);cx.fillRect(x,y+1,3,1);cx.fillRect(x+1,y+2,1,1)}
 
   draw(){
-    const S=this.S(),cv=this.cv,cx=this.cx,fl=this.floors(),id=this.getLot(),lot=T.lotDef(id),th=THEMES[lot.theme],rt=this.getRT();
-    if(cv.height!==this.height())cv.height=this.height();
+    const shop=this.getShop(),S=this.S(),cv=this.cv,cx=this.cx,fl=shop?[]:this.floors(),id=this.getLot(),lot=shop?{theme:"city"}:T.lotDef(id),th=THEMES[lot.theme],rt=this.getRT();
+    if(cv.height!==this.height())cv.height=this.height();this.fit();
     const H=cv.height,t=++this.tick,GY=H-GROUND,LY=GY-LOBBY;
     const tod=((this.getTime()%1)+1)%1,sunH=Math.sin((tod-.25)*Math.PI*2);
     if(t%3600===1)this.rain=Math.random()<.15;
     let light=clamp((sunH+.15)/.75);if(this.rain)light*=.7;const warm=clamp(1-Math.abs(sunH)/.35)*(th.earth?0:1);
+    this.env={th,light,warm,tod,sunH,t,rep:S.rep,rain:this.rain};
+    const tr=this.transparent;if(tr)cx.clearRect(0,0,W,H);
     const bands=th.night.length,bh=Math.ceil(LY/bands)+1;
-    for(let i=0;i<bands;i++){let c=mix(th.night[i],th.day[i],light);if(warm)c=mix(c,"#ff8a4a",warm*.45*(i+1)/bands);cx.fillStyle=c;cx.fillRect(0,i*bh,W,bh)}
-    if(th.stars&&light<.7){cx.globalAlpha=1-light/.7;cx.fillStyle="#f2ecd8";const n=th.stars===2?56:30;for(let i=0;i<n;i++){const x=(i*37+11)%W,y=(i*53+7)%(H*.55);if(((t>>4)+i*7)%11>1)cx.fillRect(x,y,1,1)}cx.globalAlpha=1}
+    if(!tr)for(let i=0;i<bands;i++){let c=mix(th.night[i],th.day[i],light);if(warm)c=mix(c,"#ff8a4a",warm*.45*(i+1)/bands);cx.fillStyle=c;cx.fillRect(0,i*bh,W,bh)}
+    if(!tr&&th.stars&&light<.7){cx.globalAlpha=1-light/.7;cx.fillStyle="#f2ecd8";const n=th.stars===2?56:30;for(let i=0;i<n;i++){const x=(i*37+11)%W,y=(i*53+7)%(H*.55);if(((t>>4)+i*7)%11>1)cx.fillRect(x,y,1,1)}cx.globalAlpha=1}
     const arc=(p,size,col,inner)=>{const x=8+p*(W-16),y=H*.42-Math.sin(p*Math.PI)*H*.34;cx.fillStyle=col;cx.fillRect(x-size/2+1,y-size/2,size-2,size);cx.fillRect(x-size/2,y-size/2+1,size,size-2);if(inner){cx.fillStyle=inner;cx.fillRect(x-size/2+2,y-size/2+2,size-4,size-4)}};
-    if(sunH>-.08&&!th.earth)arc(clamp((tod-.2)/.6),10,warm>.3?"#ffb35a":"#ffe08a","#fff1c0");
-    const mt=(tod+.5)%1,mH=Math.sin((mt-.25)*Math.PI*2);if(mH>-.08&&!th.earth)arc(clamp((mt-.2)/.6),8,"#f2ecd8","#e2dcc6");
-    if(th.earth){cx.fillStyle="#3a7bd5";cx.fillRect(150,16,16,16);cx.fillStyle="#5ee08a";cx.fillRect(153,19,6,5);cx.fillRect(159,25,5,4);cx.fillStyle="#fff";cx.fillRect(155,16,7,1)}
-    if(!th.earth&&lot.theme!=="neon"){cx.fillStyle=mix("#3a3a5a","#ffffff",light);cx.globalAlpha=th.clouds?.95:.55;
+    if(!tr&&sunH>-.08&&!th.earth)arc(clamp((tod-.2)/.6),10,warm>.3?"#ffb35a":"#ffe08a","#fff1c0");
+    const mt=(tod+.5)%1,mH=Math.sin((mt-.25)*Math.PI*2);if(!tr&&mH>-.08&&!th.earth)arc(clamp((mt-.2)/.6),8,"#f2ecd8","#e2dcc6");
+    if(!tr&&th.earth){cx.fillStyle="#3a7bd5";cx.fillRect(150,16,16,16);cx.fillStyle="#5ee08a";cx.fillRect(153,19,6,5);cx.fillRect(159,25,5,4);cx.fillStyle="#fff";cx.fillRect(155,16,7,1)}
+    if(!tr&&!th.earth&&lot.theme!=="neon"){cx.fillStyle=mix("#3a3a5a","#ffffff",light);cx.globalAlpha=th.clouds?.95:.55;
       for(let i=0;i<(th.clouds?7:4);i++){const x=((i*47+t/(10+i*3))%(W+40))-30,y=14+(i*29)%(H*.35);cx.fillRect(x,y,20,4);cx.fillRect(x+5,y-3,10,3);cx.fillRect(x+2,y+4,14,2)}cx.globalAlpha=1}
-    if(S.rep>120&&light<.45&&!th.earth){cx.globalAlpha=.12*(1-light/.45);cx.fillStyle="#fff1c0";
+    if(!tr&&S.rep>120&&light<.45&&!th.earth){cx.globalAlpha=.12*(1-light/.45);cx.fillStyle="#fff1c0";
       for(const[bx,ph]of[[16,0],[W-16,2]]){const a=Math.sin(t/90+ph)*.5-Math.PI/2;cx.beginPath();cx.moveTo(bx,GY);cx.lineTo(bx+Math.cos(a-.06)*H,GY+Math.sin(a-.06)*H);cx.lineTo(bx+Math.cos(a+.06)*H,GY+Math.sin(a+.06)*H);cx.closePath();cx.fill()}cx.globalAlpha=1}
-    if(th.city){const bc=mix(th.city,th.cityDay,light);
+    if(!tr&&th.city){const bc=mix(th.city,th.cityDay,light);
       [[0,46,10],[9,72,9],[18,34,10],[148,58,10],[157,84,9],[165,40,8],[172,64,9]].forEach(([x,h,w],k)=>{cx.fillStyle=bc;cx.fillRect(x,GY-h,w,h);
         if(light<.6){cx.fillStyle=k%2?"#ffcc3d":"#5ad1ff";cx.globalAlpha=.7*(1-light/.6);for(let yy=GY-h+4;yy<GY-4;yy+=6)for(let xx=x+2;xx<x+w-2;xx+=4)if(((xx*7+yy*3+k)%9)<3)cx.fillRect(xx,yy,1,2);cx.globalAlpha=1}})}
-    if(th.neon)[[3,GY-56,"#ff7ad9","BAR"],[150,GY-70,"#5ad1ff","24H"],[158,GY-40,"#ffcc3d","EAT"]].forEach(([x,y,c,w],i)=>{const on=((t>>4)+i)%5!==0;cx.fillStyle="#000";cx.fillRect(x-1,y-1,textW(w)+3,8);text(cx,w,x,y,on?c:"#3a2a4a",false)});
-    if(th.trees)[3,13,150,162,172].forEach((x,k)=>{const sw=Math.round(Math.sin(t/40+k));cx.fillStyle="#5d4037";cx.fillRect(x+2,GY-6,2,6);cx.fillStyle=mix("#1f4a2a","#4fa35a",light);cx.fillRect(x+sw,GY-14,7,8);cx.fillRect(x+1+sw,GY-16,5,2)});
-    if(th.cactus)[6,160].forEach(x=>{cx.fillStyle="#4f8a3a";cx.fillRect(x+2,GY-14,3,14);cx.fillRect(x,GY-10,2,4);cx.fillRect(x+5,GY-12,2,5)});
-    cx.fillStyle=mix(shade(th.ground,-30),th.ground,light);cx.fillRect(0,GY,W,GROUND);
-    if(th.water){cx.fillStyle=mix("#0e2a4a","#2e6aa8",light);cx.fillRect(0,GY+6,W,GROUND-6);cx.fillStyle="#7fc4ff";for(let x=((t>>2)%12)-12;x<W;x+=12)cx.fillRect(x,GY+12+((x>>2)%2)*5,5,1);
+    if(!tr&&th.neon)[[3,GY-56,"#ff7ad9","BAR"],[150,GY-70,"#5ad1ff","24H"],[158,GY-40,"#ffcc3d","EAT"]].forEach(([x,y,c,w],i)=>{const on=((t>>4)+i)%5!==0;cx.fillStyle="#000";cx.fillRect(x-1,y-1,textW(w)+3,8);text(cx,w,x,y,on?c:"#3a2a4a",false)});
+    if(!tr&&th.trees)[3,13,150,162,172].forEach((x,k)=>{const sw=Math.round(Math.sin(t/40+k));cx.fillStyle="#5d4037";cx.fillRect(x+2,GY-6,2,6);cx.fillStyle=mix("#1f4a2a","#4fa35a",light);cx.fillRect(x+sw,GY-14,7,8);cx.fillRect(x+1+sw,GY-16,5,2)});
+    if(!tr&&th.cactus)[6,160].forEach(x=>{cx.fillStyle="#4f8a3a";cx.fillRect(x+2,GY-14,3,14);cx.fillRect(x,GY-10,2,4);cx.fillRect(x+5,GY-12,2,5)});
+    if(!tr){cx.fillStyle=mix(shade(th.ground,-30),th.ground,light);cx.fillRect(0,GY,W,GROUND)}
+    if(tr){}else if(th.water){cx.fillStyle=mix("#0e2a4a","#2e6aa8",light);cx.fillRect(0,GY+6,W,GROUND-6);cx.fillStyle="#7fc4ff";for(let x=((t>>2)%12)-12;x<W;x+=12)cx.fillRect(x,GY+12+((x>>2)%2)*5,5,1);
       cx.fillStyle=mix("#3a281c","#6b4a32",light);cx.fillRect(0,GY,W,6);cx.fillStyle="#3a281c";for(let x=4;x<W;x+=14)cx.fillRect(x,GY+6,2,6);
       const bx=(t/3)%(W+40)-30;cx.fillStyle="#f2ecd8";cx.fillRect(bx,GY+15,16,4);cx.fillStyle="#ff5d6c";cx.fillRect(bx+2,GY+19,12,1);cx.fillStyle="#9a95c2";cx.fillRect(bx+6,GY+7,2,8);cx.fillStyle="#f2ecd8";cx.fillRect(bx+8,GY+8,5,6)}
     else if(th.clouds){cx.fillStyle="#ffffff";cx.fillRect(0,GY+4,W,GROUND-4);for(let x=0;x<W;x+=10)cx.fillRect(x,GY+((x/10)%2)*2,12,6)}
@@ -136,6 +147,7 @@ class TowerView{
       if(c.c==="#d8d8e0"){cx.fillStyle=c.c;cx.fillRect(x,y-4,10,3);cx.fillStyle="#555";cx.fillRect(x+1,y-1,2,2);cx.fillRect(x+7,y-1,2,2);cx.fillStyle="#9a95c2";cx.fillRect(x+4,y-7,1,3);continue}
       cx.fillStyle=c.c;cx.fillRect(x,y-4,12,3);cx.fillRect(x+3,y-6,6,2);cx.fillStyle=mix("#141428","#9ad8ff",light);cx.fillRect(x+4,y-6,4,1);cx.fillStyle="#141428";cx.fillRect(x+2,y-1,2,2);cx.fillRect(x+8,y-1,2,2);
       if(light<.5){cx.fillStyle="#fff1c0";const fx=c.v>0?x+12:x-1;cx.fillRect(fx,y-3,1,1);cx.globalAlpha=.18;cx.fillRect(c.v>0?fx+1:fx-10,y-4,10,3);cx.globalAlpha=1}}
+    if(shop){this.drawShopScene(shop,S,GY,t);return}
     const door=TX+TW/2;
     // tower body + lobby
     const top=fl.length?this.floorY(fl.length-1):LY;
@@ -309,12 +321,12 @@ class TowerView{
       cx.fillStyle="#9a95c2";const hx=(TX+TW-46+a)|0;cx.fillRect(hx,top-32,1,10+((t>>3)%4));cx.fillStyle="#ff9b4a";cx.fillRect(hx-2,top-22+((t>>3)%4),5,3)}}
 }
 /* ---------- shop scenes: one little building per shop, drawn on a 120x64 canvas ---------- */
-function drawShop(cx,k,lvl,t,col,promo){const W=120,H=64,GY=52;cx.imageSmoothingEnabled=false;
-  const g=cx.createLinearGradient(0,0,0,GY);g.addColorStop(0,"#2a3a7a");g.addColorStop(1,"#6a6ab8");cx.fillStyle=g;cx.fillRect(0,0,W,GY);
+function drawShop(cx,k,lvl,t,col,promo,bare){const W=120,H=64,GY=52;cx.imageSmoothingEnabled=false;
+  if(!bare){const g=cx.createLinearGradient(0,0,0,GY);g.addColorStop(0,"#2a3a7a");g.addColorStop(1,"#6a6ab8");cx.fillStyle=g;cx.fillRect(0,0,W,GY);
   cx.fillStyle="#ffffff";for(let i=0;i<6;i++){if(((t>>5)+i)%5)cx.fillRect((i*23+7)%W,(i*11+3)%20,1,1)}
   cx.fillStyle="#3a3760";cx.fillRect(0,GY-14,14,14);cx.fillRect(104,GY-18,16,18);                       // far buildings
   cx.fillStyle="#55527e";cx.fillRect(0,GY,W,3);cx.fillStyle="#22223a";cx.fillRect(0,GY+3,W,H-GY-3);   // sidewalk + road
-  cx.fillStyle="#ffcc3d";for(let x=((-t>>1)%12+12)%12-12;x<W;x+=12)cx.fillRect(x,GY+7,6,1);
+  cx.fillStyle="#ffcc3d";for(let x=((-t>>1)%12+12)%12-12;x<W;x+=12)cx.fillRect(x,GY+7,6,1)}
   const P=(x,y,shirt,skin="#e0b48c",hair="#2a1a10",walk=true)=>{x=Math.round(x);cx.fillStyle=skin;cx.fillRect(x,y-7,3,2);cx.fillStyle=hair;cx.fillRect(x,y-8,3,1);
     cx.fillStyle=shirt;cx.fillRect(x,y-5,3,3);cx.fillStyle="#22223a";const s=walk?(t>>3)%2:0;cx.fillRect(x+s,y-2,1,2);cx.fillRect(x+2-s,y-2,1,walk?1:2)};
   const car=(x,y,c)=>{x=Math.round(x);cx.fillStyle=c;cx.fillRect(x,y-4,14,3);cx.fillRect(x+3,y-6,8,2);cx.fillStyle="#bfe6ff";cx.fillRect(x+4,y-5,2,1);cx.fillRect(x+8,y-5,2,1);
@@ -355,10 +367,54 @@ function drawShop(cx,k,lvl,t,col,promo){const W=120,H=64,GY=52;cx.imageSmoothing
     for(let i=0;i<5;i++){cx.fillStyle="#f8f2e0";cx.fillRect(32+i*12,GY-28,4,26)}cx.fillStyle="#22223a";cx.fillRect(56,GY-16,8,16);
     text(cx,"BANK",50,GY-41,"#2a1a10",false);cx.fillStyle="#ffcc3d";if((t>>3)%3===0)cx.fillRect(96,GY-12,2,2);cx.fillStyle="#3a3760";cx.fillRect(94,GY-14,6,14);shoppers(60,n)}
   // level flair: string lights, then a gold star at max
-  if(lvl>=4)for(let i=0;i<14;i++){cx.fillStyle=SH[(i+(t>>4))%7];cx.fillRect(8+i*8,6+Math.round(Math.sin(i)*1.5),1,1)}
+  if(lvl>=4&&!bare)for(let i=0;i<14;i++){cx.fillStyle=SH[(i+(t>>4))%7];cx.fillRect(8+i*8,6+Math.round(Math.sin(i)*1.5),1,1)}
   if(lvl>=10){const y=2+((t>>4)%2);cx.fillStyle="#ffcc3d";cx.fillRect(112,y,1,3);cx.fillRect(111,y+1,3,1)}
   if(promo){const on=(t>>4)%2;cx.fillStyle=on?"#ff3dd0":"#ffcc3d";cx.fillRect(2,GY-20,24,9);text(cx,"SALE",4,GY-18,on?"#ffffff":"#22223a",false);
     for(let i=0;i<6;i++){const ph=(t*2+i*29)%64;cx.fillStyle=SH[i%7];cx.fillRect((i*19+7)%W,ph,1,2)}}}
 G.drawShop=drawShop;
+
+/* ---------- the world behind the page: the current property's sky and street, stretched across the whole screen
+   and lined up pixel-for-pixel with the tower canvas so the tower sits inside one continuous scene ---------- */
+class WorldView{
+  constructor(canvas,view){this.cv=canvas;this.cx=canvas.getContext("2d");this.view=view;this.loop=this.loop.bind(this);requestAnimationFrame(this.loop)}
+  loop(){try{this.draw()}catch(e){console.error(e)}requestAnimationFrame(this.loop)}
+  draw(){const v=this.view,E=v.env;if(!E)return;const r=v.cv.getBoundingClientRect();if(!r.width)return;
+    const s=r.width/W,vw=innerWidth,vh=innerHeight,ox=Math.ceil(r.left/s),oy=Math.ceil(r.top/s),Wl=Math.ceil(vw/s)+2,Hl=Math.ceil(vh/s)+2;
+    const cv=this.cv;if(cv.width!==Wl||cv.height!==Hl){cv.width=Wl;cv.height=Hl}
+    const left=(r.left-ox*s)+"px",top=(r.top-oy*s)+"px",cw=Wl*s+"px",ch=Hl*s+"px";
+    if(cv.style.left!==left)cv.style.left=left;if(cv.style.top!==top)cv.style.top=top;if(cv.style.width!==cw)cv.style.width=cw;if(cv.style.height!==ch)cv.style.height=ch;
+    const cx=this.cx,{th,light,warm,tod,sunH,t}=E,GY=oy+v.cv.height-GROUND,H=Hl;cx.imageSmoothingEnabled=false;
+    // sky
+    const bands=th.night.length,bh=Math.ceil(GY/bands)+1;
+    for(let i=0;i<bands;i++){let c=mix(th.night[i],th.day[i],light);if(warm)c=mix(c,"#ff8a4a",warm*.45*(i+1)/bands);cx.fillStyle=c;cx.fillRect(0,i*bh,Wl,bh)}
+    if(th.stars&&light<.7){cx.globalAlpha=1-light/.7;cx.fillStyle="#f2ecd8";const n=Math.round(Wl*GY/(th.stars===2?500:900));for(let i=0;i<n;i++){const x=(i*37+11)%Wl,y=(i*53+7)%Math.max(1,GY*.7|0);if(((t>>4)+i*7)%11>1)cx.fillRect(x,y,1,1)}cx.globalAlpha=1}
+    const arc=(p,size,col,inner)=>{const x=8+p*(Wl-16),y=GY*.45-Math.sin(p*Math.PI)*GY*.36;cx.fillStyle=col;cx.fillRect(x-size/2+1,y-size/2,size-2,size);cx.fillRect(x-size/2,y-size/2+1,size,size-2);if(inner){cx.fillStyle=inner;cx.fillRect(x-size/2+2,y-size/2+2,size-4,size-4)}};
+    if(sunH>-.08&&!th.earth)arc(clamp((tod-.2)/.6),12,warm>.3?"#ffb35a":"#ffe08a","#fff1c0");
+    const mt=(tod+.5)%1,mH=Math.sin((mt-.25)*Math.PI*2);if(mH>-.08&&!th.earth)arc(clamp((mt-.2)/.6),9,"#f2ecd8","#e2dcc6");
+    if(th.earth){const x=Wl-40;cx.fillStyle="#3a7bd5";cx.fillRect(x,16,18,18);cx.fillStyle="#5ee08a";cx.fillRect(x+3,19,7,6);cx.fillRect(x+10,26,6,5);cx.fillStyle="#fff";cx.fillRect(x+5,16,8,1)}
+    if(!th.earth&&!th.neon){cx.fillStyle=mix("#3a3a5a","#ffffff",light);cx.globalAlpha=th.clouds?.95:.55;const n=Math.ceil(Wl/(th.clouds?40:70));
+      for(let i=0;i<n;i++){const x=((i*97+t/(10+i%5*3))%(Wl+60))-40,y=10+(i*29)%Math.max(10,GY*.45|0);cx.fillRect(x,y,24,4);cx.fillRect(x+6,y-3,12,3);cx.fillRect(x+2,y+4,18,2)}cx.globalAlpha=1}
+    // distant skyline across the whole width
+    if(th.city){const bc=mix(th.city,th.cityDay,light);let x=-((ox*3)%23);let k=0;
+      while(x<Wl){const w=8+((k*7)%5)*2,h=24+((k*53)%9)*8;if(x+w<ox+2||x>ox+W-2||true){cx.fillStyle=bc;cx.fillRect(x,GY-h,w,h);
+        if(light<.6){cx.fillStyle=k%2?"#ffcc3d":"#5ad1ff";cx.globalAlpha=.7*(1-light/.6);for(let yy=GY-h+4;yy<GY-4;yy+=6)for(let xx=x+2;xx<x+w-2;xx+=4)if(((xx*7+yy*3+k)%9)<3)cx.fillRect(xx,yy,1,2);cx.globalAlpha=1}}
+        x+=w+1+((k*11)%4);k++}}
+    if(th.neon){const sg=[["BAR","#ff7ad9"],["24H","#5ad1ff"],["EAT","#ffcc3d"],["OPEN","#5ee08a"],["LIVE","#ff5d6c"]];for(let i=0,x=6;x<Wl;i++,x+=37+(i*13)%20){const[w,c]=sg[i%5],y=GY-30-(i*17)%40;const on=((t>>4)+i)%5!==0;cx.fillStyle="#000";cx.fillRect(x-1,y-1,textW(w)+3,8);text(cx,w,x,y,on?c:"#3a2a4a",false)}}
+    if(th.trees)for(let x=4-(ox%9),k=0;x<Wl;x+=23+(k*7)%13,k++){const sw=Math.round(Math.sin(t/40+k));cx.fillStyle="#5d4037";cx.fillRect(x+2,GY-6,2,6);cx.fillStyle=mix("#1f4a2a","#4fa35a",light);cx.fillRect(x+sw,GY-14,7,8);cx.fillRect(x+1+sw,GY-16,5,2)}
+    if(th.cactus)for(let x=6-(ox%11),k=0;x<Wl;x+=41+(k*13)%25,k++){cx.fillStyle="#4f8a3a";cx.fillRect(x+2,GY-14,3,14);cx.fillRect(x,GY-10,2,4);cx.fillRect(x+5,GY-12,2,5)}
+    // street, lined up with the tower's own street
+    const g0=mix(shade(th.ground,-30),th.ground,light);cx.fillStyle=g0;cx.fillRect(0,GY,Wl,H-GY);
+    const sx=x=>((x-ox)%12+12)%12;
+    if(th.water){cx.fillStyle=mix("#0e2a4a","#2e6aa8",light);cx.fillRect(0,GY+6,Wl,H-GY-6);cx.fillStyle="#7fc4ff";const wo=(t>>2)%12;
+      for(let yy=GY+12;yy<H;yy+=10)for(let x=wo-12-((ox)%12);x<Wl;x+=12)cx.fillRect(x+((yy>>1)%6),yy+((x>>2)%2)*5,5,1);
+      cx.fillStyle=mix("#3a281c","#6b4a32",light);cx.fillRect(0,GY,Wl,6);cx.fillStyle="#3a281c";for(let x=0;x<Wl;x++)if(((x-ox)%14+14)%14===4)cx.fillRect(x,GY+6,2,6);
+      const bx=((t/2)%(Wl+60))-40;cx.fillStyle="#f2ecd8";cx.fillRect(Wl-bx,GY+30,22,5);cx.fillStyle="#ff5d6c";cx.fillRect(Wl-bx+2,GY+35,18,1);cx.fillStyle="#9a95c2";cx.fillRect(Wl-bx+8,GY+20,2,10)}
+    else if(th.clouds){cx.fillStyle="#ffffff";cx.fillRect(0,GY+4,Wl,H-GY-4);for(let x=0;x<Wl;x++)if(sx(x)%10===0)cx.fillRect(x,GY+((x/10|0)%2)*2,12,6)}
+    else{cx.fillStyle=mix(shade(th.walk,-30),th.walk,light);cx.fillRect(0,GY,Wl,5);cx.fillStyle=shade(th.walk,-50);for(let x=0;x<Wl;x++)if(sx(x)%8===0)cx.fillRect(x,GY+4,1,1);
+      if(!th.craters){cx.fillStyle="#ffcc3d";for(let x=0;x<Wl;x++)if(sx(x)<6)cx.fillRect(x,GY+15,1,1);
+        cx.fillStyle=mix(shade(th.walk,-40),shade(th.walk,-15),light);cx.fillRect(0,GY+21,Wl,5)}
+      else{cx.fillStyle=shade(th.ground,-35);for(let i=0;i<Wl/40;i++){const x=(i*67+13)%Wl,y=GY+8+(i*29)%Math.max(8,(H-GY-12));cx.fillRect(x,y,9,2);cx.fillRect(x+2,y-1,5,1)}}}
+  }}
+G.WorldView=WorldView;
 G.TowerView=TowerView;G.TOWER_THEMES=Object.fromEntries(Object.entries(THEMES).map(([k,v])=>[k,{...v,sky:v.night,skyDay:v.day}]));G.pixelShort=short;G.pixelText=text;
 })(globalThis);

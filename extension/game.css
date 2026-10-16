@@ -8,13 +8,20 @@
 @keyframes flash{50%{border-color:var(--gold);background:var(--panel2)}}
 .main{display:grid;grid-template-columns:minmax(320px,520px) 1fr;gap:10px;align-items:start}
 @media (max-width:820px){.main{grid-template-columns:1fr}}
-.towerbox{background:var(--panel);border:3px solid var(--line);padding:6px;display:flex;flex-direction:column;gap:6px}
+.towerbox{min-width:0;background:transparent;border:3px solid transparent;padding:6px;display:flex;flex-direction:column;gap:6px}
 .lotbar{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center}
 .lotname{text-align:center;display:flex;flex-direction:column;gap:2px;min-width:0}
 .lotname b{font-family:var(--pix);font-size:10px;color:var(--gold);font-weight:normal}
 .lotname span{font-size:16px}
-.towerscroll{max-height:min(70vh,700px);overflow-y:auto;overflow-x:hidden;background:#0d0d20;scrollbar-color:var(--line) var(--night)}
-#tower{width:100%;height:auto;display:block;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+.towerscroll{width:100%;min-width:0;height:min(68vh,680px);overflow:hidden;display:flex;justify-content:center;align-items:flex-end}
+#tower{display:block;flex:none;image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer}
+/* the property's world fills the whole screen behind everything */
+#world{position:fixed;left:0;top:0;z-index:-1;image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none}
+.lotbar,.towerfoot{position:relative}
+.lotbar{background:rgba(20,20,40,.72);padding:4px;border:3px solid var(--line)}
+.hint{background:rgba(20,20,40,.72);padding:2px 6px;align-self:center}
+body.shopmode #earn-toggle{display:none}
+body.shopmode .towerfoot{grid-template-columns:1fr 1fr}
 .towerfoot{display:grid;grid-template-columns:1fr auto auto;gap:6px}
 .towerfoot button{font-size:10px}
 #earn-toggle[aria-pressed="true"]{background:var(--gold);color:var(--night)}
