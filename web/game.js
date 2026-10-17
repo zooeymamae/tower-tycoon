@@ -20,7 +20,64 @@ if(!globalThis.Cloud)globalThis.Cloud={ready:false,acct:null,loadAcct:async()=>n
 .hud,.panel,.lotbar,.towerfoot,.hint{position:relative;z-index:2}
 .lotbar,.hint{background:rgba(20,20,40,.72)}
 .notes{top:auto!important;bottom:12px;flex-direction:column-reverse}
-html,body{overflow-x:hidden}`;document.head.appendChild(st)}
+html,body{overflow-x:hidden}
+
+/* ---------- phones: everything fits the screen, tabs become a bottom bar ---------- */
+@media (max-width:820px){
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .app{height:100vh;height:100dvh;max-width:none;padding:max(6px,env(safe-area-inset-top)) 6px 0;gap:6px;box-sizing:border-box;display:flex;flex-direction:column}
+  .hud{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;flex:none}
+  .stat{padding:3px 6px;border-width:2px}
+  .stat b{font-size:6px;margin-bottom:3px}
+  .stat span{font-size:10px}
+  .rank span{font-size:7px;white-space:nowrap}
+  .main{display:flex!important;flex-direction:column;align-items:stretch!important;gap:6px;flex:1;min-height:0;min-width:0;width:100%}
+  .panel,.towerbox{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+  .body{overflow-x:hidden}
+  .note:nth-child(n+3){display:none}
+  table.stocks th:nth-child(4),table.stocks td:nth-child(4),table.stocks th:nth-child(6),table.stocks td:nth-child(6){display:none}
+  table.stocks td,table.stocks th{padding-left:4px;padding-right:4px}
+  .towerbox{flex:none;height:38vh;height:38dvh;padding:0;gap:4px;border:0!important}
+  .lotbar{padding:2px;border-width:2px;gap:4px}
+  .lotbar button{padding:4px 12px;min-height:32px}
+  .lotname b{font-size:9px}
+  .lotname span{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .towerscroll{flex:1;height:auto!important;min-height:0}
+  .towerfoot{gap:4px}
+  .towerfoot button{font-size:8px;padding:7px 4px;min-height:32px}
+  .hint{display:none!important}
+  .panel{flex:1;min-height:0;border-width:2px}
+  .body{height:auto!important;flex:1;min-height:0;padding:8px;gap:10px;-webkit-overflow-scrolling:touch}
+  .tabs{order:2;flex-wrap:nowrap;border-bottom:0!important;border-top:3px solid var(--line);padding-bottom:env(safe-area-inset-bottom);background:var(--night)}
+  .tabs button{flex:1 1 0;min-width:0;padding:7px 0 6px;border-right:2px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:4px;font-size:0}
+  .tabs button::before{content:attr(data-ico);font-family:system-ui,"Segoe UI Symbol","Apple Symbols",sans-serif;font-size:17px;line-height:1}
+  .tabs button::after{content:attr(data-short);font-family:var(--pix);font-size:6px;letter-spacing:0}
+  .tabs .badge{position:absolute;top:2px;right:4px;font-size:8px}
+  .notes{top:76px!important;bottom:auto!important;left:8px;right:8px;width:auto!important;flex-direction:column!important}
+  .note{padding:6px 8px}
+  .note p{font-size:15px;margin:2px 0 0}
+  .toast{bottom:calc(72px + env(safe-area-inset-bottom))!important;max-width:calc(100vw - 24px)}
+  .modal .event,.tut-box{max-height:85dvh;overflow:auto}
+  button{min-height:34px}
+}
+/* short, wide screens (phones sideways, small laptops): fit the screen side by side */
+@media (min-width:821px) and (max-height:640px){
+  html,body{height:100%;overflow:hidden}
+  .app{height:100vh;height:100dvh;padding:6px;gap:6px;box-sizing:border-box}
+  .hud{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+  .stat{padding:3px 6px}.stat b{font-size:6px;margin-bottom:2px}.stat span{font-size:10px}
+  .main{flex:1;min-height:0}
+  .towerbox,.panel{height:100%;min-height:0}
+  .towerbox{padding:0}
+  .towerscroll{flex:1;height:auto!important;min-height:0}
+  .hint{display:none!important}
+  .body{height:auto!important;flex:1;min-height:0}
+}
+`;document.head.appendChild(st)}
+// phone tab bar: an icon and a short label for each tab
+{const I={floor:["\u25A6","FLOOR"],team:["\u263A","TEAM"],inbox:["\u2709","INBOX"],market:["\u2197","MARKET"],land:["\u2302","LAND"],money:["$","MONEY"],records:["\u2605","RANK"],settings:["\u2699","MORE"]};
+  document.querySelectorAll("#tabs button").forEach(b=>{const v=I[b.dataset.tab];if(v){b.dataset.ico=v[0]+"\uFE0E";b.dataset.short=v[1]}})}
 if(!$("#world")){const c=document.createElement("canvas");c.id="world";c.setAttribute("aria-hidden","true");document.body.prepend(c)}
 if(!$("#street")){const c=document.createElement("canvas");c.id="street";c.setAttribute("aria-hidden","true");$("#world").after(c)}
 if(!$("#tower-hint")){const h=document.querySelector(".towerbox .hint");if(h)h.id="tower-hint";else{const d=document.createElement("div");d.id="tower-hint";d.className="hint";$("#towerbox")?.appendChild(d)}}
